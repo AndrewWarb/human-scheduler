@@ -55,19 +55,23 @@ class NextJsGuiAdapter:
     ) -> None:
         nextjs_site_dir = Path(__file__).resolve().parent.parent / "nextjs_site"
         static_dir = nextjs_site_dir / "out"
+        frontend_bind_host = host
+        frontend_browser_host = "127.0.0.1" if host in {"0.0.0.0", "::"} else host
+        frontend_url = f"http://{frontend_browser_host}:{frontend_port}"
         self._service = SchedulerHttpService(
             facade=facade,
             metadata=self.metadata,
             host=host,
             port=port,
             static_dir=static_dir,
+            frontend_redirect_url=frontend_url if frontend_dev else None,
         )
         self._open_browser = open_browser
         self._frontend_dev = frontend_dev
         self._frontend_port = frontend_port
-        self._frontend_bind_host = host
-        self._frontend_browser_host = "127.0.0.1" if host in {"0.0.0.0", "::"} else host
-        self._frontend_url = f"http://{self._frontend_browser_host}:{frontend_port}"
+        self._frontend_bind_host = frontend_bind_host
+        self._frontend_browser_host = frontend_browser_host
+        self._frontend_url = frontend_url
         self._frontend_process: Popen[bytes] | None = None
         self._nextjs_site_dir = nextjs_site_dir
 

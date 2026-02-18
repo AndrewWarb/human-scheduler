@@ -13,7 +13,7 @@ import { SettingsView } from "@/components/views/settings-view";
 
 function AppShell() {
   const [activeTab, setActiveTab] = useState<TabId>("dashboard");
-  const { state, sseStatus } = useApp();
+  const { state, sseStatus, startSimulation, resetSimulation } = useApp();
 
   return (
     <div className="app-shell animate-[fade-in_0.45s_ease]">
@@ -27,14 +27,38 @@ function AppShell() {
           <p className="app-kicker">Human Scheduler • Live Console</p>
           <h1 className="app-title">Focus Control Panel</h1>
           <p className="app-subtitle">
-            Ask what is next, commit instantly, and track every state change in
+            Start the simulation once, follow live recommendations, and track every state change in
             one quiet control surface.
           </p>
         </div>
         <ConnectionPill status={sseStatus} />
       </header>
 
-      <CurrentRunBar dispatch={state.dispatch} />
+      <section className="sim-launch" aria-label="Simulation controls">
+        <button
+          type="button"
+          className="sim-launch-btn"
+          aria-label="Start simulation"
+          title="Start simulation"
+          onClick={() => void startSimulation()}
+        >
+          Start Simulation
+        </button>
+        <button
+          type="button"
+          className="sim-launch-btn sim-launch-btn-secondary"
+          aria-label="Reset simulation to 0"
+          title="Reset simulation to 0"
+          onClick={() => void resetSimulation()}
+        >
+          ↺
+        </button>
+      </section>
+
+      <CurrentRunBar
+        dispatch={state.dispatch}
+        simulationRunning={state.simulationRunning}
+      />
 
       <TabNav active={activeTab} onChange={setActiveTab} />
 

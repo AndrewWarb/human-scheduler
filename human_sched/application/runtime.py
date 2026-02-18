@@ -359,6 +359,51 @@ class HumanTaskScheduler:
             self._persist_state_unlocked()
             return task
 
+    def reset_simulation(self) -> int:
+        """Reset dispatch state and re-queue unfinished tasks from a clean baseline."""
+        with self._lock:
+            now_us = self._now_us()
+            self._apply_tick_catchup(now_us)
+            self._cancel_quantum_artifacts(reset_quantum_end=True)
+
+            # Drain any currently running work so CPU becomes idle.
+            while self.processor.active_thread is not None:
+                active = self.processor.active_thread
+                if active is None:
+                    break
+                self.scheduler.thread_block(active, self.processor, now_us)
+
+            reset_task_count = 0
+            for task in self.tasks_by_id.values():
+                thread = task.thread
+
+                if thread.state == ThreadState.TERMINATED:
+                    continue
+
+                if thread.state == ThreadState.RUNNABLE:
+                    self.scheduler.thread_remove(thread, now_us)
+                    thread.state = ThreadState.WAITING
+                    thread.last_run_time = now_us
+                elif thread.state == ThreadState.RUNNING:
+                    self.scheduler.thread_block(thread, self.processor, now_us)
+
+                # Restart each unfinished task with a fresh quantum budget.
+                thread.quantum_remaining = 0
+                thread.computation_epoch = 0
+                thread.first_timeslice = True
+
+                preempt_proc = self.scheduler.thread_wakeup(thread, now_us)
+                if preempt_proc is not None:
+                    self.scheduler.consume_preemption_reason(preempt_proc)
+
+                reset_task_count += 1
+
+            self.processor.active_thread = None
+            self.processor.quantum_end = 0
+            self._last_tick_us = now_us
+            self._persist_state_unlocked()
+            return reset_task_count
+
     # ------------------------------------------------------------------
     # Primary use case
     # ------------------------------------------------------------------

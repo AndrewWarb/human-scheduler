@@ -5,8 +5,9 @@ import { Card } from "../card";
 import { Pill } from "../pill";
 
 export function DashboardView() {
-  const { state, doWhatNext, doTaskAction, refreshAll } = useApp();
+  const { state, doTaskAction } = useApp();
   const dispatch = state.dispatch;
+  const simulationRunning = state.simulationRunning;
 
   function handlePauseCurrent() {
     const taskId = dispatch?.task?.id;
@@ -25,20 +26,16 @@ export function DashboardView() {
       <div className="grid grid-cols-2 gap-3.5 max-[920px]:grid-cols-1">
         <Card hero>
           <p className="section-eyebrow">Primary Action</p>
-          <h3 className="text-[1.08rem]">What should I do now?</h3>
+          <h3 className="text-[1.08rem]">Scheduler Status</h3>
           <p className="text-muted">
-            This action is atomic: select + dispatch in one scheduler operation.
+            Use the central start/stop controls above. Recommendations update automatically while running.
           </p>
-          <button
-            className="btn btn-primary text-base px-4 py-3"
-            onClick={doWhatNext}
-          >
-            What Next
-          </button>
           <div className="text-[0.83rem] text-muted">
             {dispatch
               ? `${dispatch.decision.toUpperCase()}: ${dispatch.task.title}`
-              : "No recommendation yet."}
+              : simulationRunning
+                ? "Waiting for runnable work."
+                : "Simulation not started."}
           </div>
         </Card>
 
@@ -58,15 +55,11 @@ export function DashboardView() {
             >
               Complete
             </button>
-            <button
-              className="btn btn-ghost"
-              onClick={() => refreshAll()}
-            >
-              Refresh
-            </button>
           </div>
           <p className="text-muted">
-            Select a task with What Next first.
+            {simulationRunning
+              ? "Recommendations update automatically while simulation is running."
+              : "Start simulation to resume automatic recommendations."}
           </p>
         </Card>
       </div>

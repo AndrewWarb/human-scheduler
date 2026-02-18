@@ -13,7 +13,10 @@ export function useEventStream(
 ) {
   const [status, setStatus] = useState<ConnectionStatus>("disconnected");
   const onEventRef = useRef(onEvent);
-  onEventRef.current = onEvent;
+
+  useEffect(() => {
+    onEventRef.current = onEvent;
+  }, [onEvent]);
 
   const connect = useCallback(() => {
     const base = process.env.NEXT_PUBLIC_API_URL ?? "";

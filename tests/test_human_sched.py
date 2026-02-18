@@ -164,6 +164,31 @@ class HumanSchedulerTests(unittest.TestCase):
         self.assertEqual(len(self.scheduler.list_tasks()), 1)
         self.assertEqual(self.scheduler.list_tasks()[0].task_id, keep_task.task_id)
 
+    def test_reset_simulation_requeues_unfinished_tasks(self) -> None:
+        area = self.scheduler.create_life_area("Work")
+        active = self.scheduler.create_task(
+            life_area=area,
+            title="Ship release notes",
+            urgency_tier=UrgencyTier.CRITICAL,
+        )
+        done = self.scheduler.create_task(
+            life_area=area,
+            title="Archive old docs",
+            urgency_tier=UrgencyTier.MAINTENANCE,
+        )
+
+        dispatch = self.scheduler.what_next()
+        self.assertIsNotNone(dispatch)
+        self.scheduler.complete_task(done.task_id)
+
+        reset_count = self.scheduler.reset_simulation()
+
+        self.assertEqual(reset_count, 1)
+        self.assertEqual(active.thread.state, ThreadState.RUNNABLE)
+        self.assertEqual(done.thread.state, ThreadState.TERMINATED)
+        self.assertIsNone(self.scheduler.processor.active_thread)
+        self.assertEqual(self.scheduler.processor.quantum_end, 0)
+
     def test_rename_life_area_updates_name_lookup(self) -> None:
         area = self.scheduler.create_life_area("Study")
         renamed = self.scheduler.rename_life_area(area.life_area_id, name="Deep Study")

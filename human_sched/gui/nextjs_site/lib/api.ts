@@ -130,6 +130,13 @@ export async function whatNext(): Promise<{ dispatch: Dispatch | null }> {
   return apiPost("/api/what-next", {});
 }
 
+export async function resetSimulation(): Promise<{
+  status: "ok";
+  reset_task_count: number;
+}> {
+  return apiPost("/api/reset", {});
+}
+
 export async function taskAction(
   taskId: number,
   action: "pause" | "resume" | "complete",

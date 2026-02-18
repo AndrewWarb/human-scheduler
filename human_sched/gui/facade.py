@@ -136,6 +136,24 @@ class SchedulerGuiFacade:
 
         return self._run_command(_complete)
 
+    def reset_simulation(self) -> dict[str, Any]:
+        def _reset() -> dict[str, Any]:
+            reset_task_count = self._scheduler.reset_simulation()
+            task_word = "task" if reset_task_count == 1 else "tasks"
+            self._last_dispatch_task_id = None
+            self._last_dispatch_at = None
+            self._last_dispatch_reason = None
+            self._last_dispatch_decision = None
+            self.publish_info(
+                f"Simulation reset to t=0. Re-queued {reset_task_count} {task_word}.",
+            )
+            return {
+                "status": "ok",
+                "reset_task_count": reset_task_count,
+            }
+
+        return self._run_command(_reset)
+
     def what_next(self) -> dict[str, Any] | None:
         def _select() -> dict[str, Any] | None:
             before_snapshot = self._scheduler.get_dispatch_snapshot()

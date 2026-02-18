@@ -5,13 +5,21 @@ import { Countdown } from "./countdown";
 
 interface CurrentRunBarProps {
   dispatch: Dispatch | null;
+  simulationRunning: boolean;
 }
 
-export function CurrentRunBar({ dispatch }: CurrentRunBarProps) {
+export function CurrentRunBar({ dispatch, simulationRunning }: CurrentRunBarProps) {
   const title = dispatch?.task.title ?? "No active task";
-  const meta = dispatch
+  const dispatchMeta = dispatch
     ? `${dispatch.life_area.name} • ${dispatch.task.urgency_label} • ${dispatch.decision}`
-    : "Press What Next to dispatch work.";
+    : "";
+  const meta = dispatch
+    ? simulationRunning
+      ? dispatchMeta
+      : `${dispatchMeta} • simulation paused`
+    : simulationRunning
+      ? "Simulation running. Waiting for runnable work."
+      : "Start simulation to dispatch work automatically.";
 
   return (
     <section className="current-run-bar">
@@ -20,7 +28,10 @@ export function CurrentRunBar({ dispatch }: CurrentRunBarProps) {
         <h2>{title}</h2>
         <p className="current-run-meta">{meta}</p>
       </div>
-      <Countdown endAt={dispatch?.focus_block_end_at} />
+      <Countdown
+        endAt={dispatch?.focus_block_end_at}
+        paused={!simulationRunning}
+      />
     </section>
   );
 }

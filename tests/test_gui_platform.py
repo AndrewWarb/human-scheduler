@@ -109,6 +109,21 @@ class GuiPlatformTests(unittest.TestCase):
         self.assertEqual(len(all_areas), 1)
         self.assertEqual(all_areas[0]["name"], "Health")
 
+    def test_facade_can_reset_simulation(self) -> None:
+        area = self.facade.create_life_area(name="Deep Work")
+        self.facade.create_task(
+            life_area_id=int(area["id"]),
+            title="Draft architecture brief",
+            urgency_tier="important",
+        )
+        self.assertIsNotNone(self.facade.what_next())
+
+        reset = self.facade.reset_simulation()
+
+        self.assertEqual(reset["status"], "ok")
+        self.assertEqual(reset["reset_task_count"], 1)
+        self.assertIsNone(self.facade.current_dispatch())
+
     def test_facade_life_area_payload_omits_description(self) -> None:
         area = self.facade.create_life_area(name="Focus")
 

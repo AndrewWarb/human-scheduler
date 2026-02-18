@@ -26,6 +26,7 @@ import {
   fetchDispatch,
   fetchEvents,
   whatNext as apiWhatNext,
+  resetSimulation as apiResetSimulation,
   taskAction as apiTaskAction,
   createTask as apiCreateTask,
   createLifeArea as apiCreateLifeArea,
@@ -42,6 +43,7 @@ interface AppState {
   tasks: Task[];
   events: SchedulerEvent[];
   dispatch: Dispatch | null;
+  simulationRunning: boolean;
   selectedTaskId: number | null;
   toast: string;
 }
@@ -55,6 +57,7 @@ type Action =
   | { type: "SET_EVENTS"; payload: SchedulerEvent[] }
   | { type: "PUSH_EVENT"; payload: SchedulerEvent }
   | { type: "SET_DISPATCH"; payload: Dispatch | null }
+  | { type: "SET_SIMULATION_RUNNING"; payload: boolean }
   | { type: "SET_SELECTED_TASK"; payload: number | null }
   | { type: "SHOW_TOAST"; payload: string };
 
@@ -66,6 +69,7 @@ const INITIAL_STATE: AppState = {
   tasks: [],
   events: [],
   dispatch: null,
+  simulationRunning: false,
   selectedTaskId: null,
   toast: "",
 };
@@ -92,6 +96,8 @@ function reducer(state: AppState, action: Action): AppState {
     }
     case "SET_DISPATCH":
       return { ...state, dispatch: action.payload };
+    case "SET_SIMULATION_RUNNING":
+      return { ...state, simulationRunning: action.payload };
     case "SET_SELECTED_TASK":
       return { ...state, selectedTaskId: action.payload };
     case "SHOW_TOAST":
@@ -108,7 +114,9 @@ interface AppContextValue {
     urgency?: string;
     state?: string;
   }) => Promise<void>;
-  doWhatNext: () => Promise<void>;
+  startSimulation: () => Promise<void>;
+  stopSimulation: () => void;
+  resetSimulation: () => Promise<void>;
   doTaskAction: (
     taskId: number,
     action: "pause" | "resume" | "complete",
@@ -139,6 +147,8 @@ export function useApp(): AppContextValue {
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(reducer, INITIAL_STATE);
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const autoDispatchInFlightRef = useRef(false);
+  const autoDispatchCooldownUntilRef = useRef(0);
 
   const showToast = useCallback((msg: string) => {
     dispatch({ type: "SHOW_TOAST", payload: msg });
@@ -205,6 +215,44 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       showToast(e instanceof Error ? e.message : String(e));
     }
   }, [showToast]);
+
+  const startSimulation = useCallback(async () => {
+    if (state.simulationRunning) {
+      showToast("Simulation is already running.");
+      return;
+    }
+    dispatch({ type: "SET_SIMULATION_RUNNING", payload: true });
+    if (state.dispatch !== null) {
+      showToast("Simulation resumed.");
+      return;
+    }
+    await doWhatNext();
+  }, [state.simulationRunning, state.dispatch, doWhatNext, showToast]);
+
+  const stopSimulation = useCallback(() => {
+    if (!state.simulationRunning) {
+      showToast("Simulation is already stopped.");
+      return;
+    }
+    dispatch({ type: "SET_SIMULATION_RUNNING", payload: false });
+    showToast("Simulation stopped. Automatic recommendations paused.");
+  }, [state.simulationRunning, showToast]);
+
+  const resetSimulation = useCallback(async () => {
+    try {
+      const result = await apiResetSimulation();
+      dispatch({ type: "SET_SIMULATION_RUNNING", payload: false });
+      dispatch({ type: "SET_DISPATCH", payload: null });
+      dispatch({ type: "SET_SELECTED_TASK", payload: null });
+      await refreshAll();
+
+      const count = result.reset_task_count ?? 0;
+      const taskWord = count === 1 ? "task" : "tasks";
+      showToast(`Simulation reset to 0 (${count} ${taskWord} re-queued).`);
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : String(e));
+    }
+  }, [refreshAll, showToast]);
 
   const doTaskAction = useCallback(
     async (taskId: number, action: "pause" | "resume" | "complete") => {
@@ -289,6 +337,23 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     refreshAll();
   }, [refreshAll]);
 
+  // Auto-dispatch while simulation is running when work is runnable but CPU is idle.
+  useEffect(() => {
+    if (!state.simulationRunning || state.dispatch !== null) return;
+    if (!state.tasks.some((task) => task.state === "runnable")) return;
+
+    const now = Date.now();
+    if (autoDispatchInFlightRef.current || now < autoDispatchCooldownUntilRef.current) {
+      return;
+    }
+
+    autoDispatchInFlightRef.current = true;
+    void doWhatNext().finally(() => {
+      autoDispatchInFlightRef.current = false;
+      autoDispatchCooldownUntilRef.current = Date.now() + 1000;
+    });
+  }, [state.simulationRunning, state.dispatch, state.tasks, doWhatNext]);
+
   // Auto-refresh diagnostics every 5s
   useEffect(() => {
     const id = setInterval(() => {
@@ -334,7 +399,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     sseStatus,
     refreshAll,
     refreshTasks,
-    doWhatNext,
+    startSimulation,
+    stopSimulation,
+    resetSimulation,
     doTaskAction,
     doCreateTask,
     doCreateLifeArea,

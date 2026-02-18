@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 
 interface CountdownProps {
   endAt: string | null | undefined;
+  paused?: boolean;
 }
 
 function format(remainingMs: number): string {
@@ -15,24 +16,29 @@ function format(remainingMs: number): string {
   return `${h}:${m}:${s}`;
 }
 
-export function Countdown({ endAt }: CountdownProps) {
-  const [display, setDisplay] = useState("--:--:--");
+export function Countdown({ endAt, paused = false }: CountdownProps) {
+  const [nowMs, setNowMs] = useState(0);
 
   useEffect(() => {
-    if (!endAt) {
-      setDisplay("--:--:--");
-      return;
-    }
+    if (!endAt) return;
+    const id = setTimeout(() => {
+      setNowMs(Date.now());
+    }, 0);
+    return () => clearTimeout(id);
+  }, [endAt, paused]);
 
-    const tick = () => {
-      const remaining = new Date(endAt).getTime() - Date.now();
-      setDisplay(format(remaining));
-    };
-
-    tick();
-    const id = setInterval(tick, 1000);
+  useEffect(() => {
+    if (!endAt || paused) return;
+    const id = setInterval(() => {
+      setNowMs(Date.now());
+    }, 1000);
     return () => clearInterval(id);
-  }, [endAt]);
+  }, [endAt, paused]);
+
+  const display =
+    !endAt || nowMs <= 0
+      ? "--:--:--"
+      : format(new Date(endAt).getTime() - nowMs);
 
   return (
     <span className="font-mono text-[clamp(1.2rem,2.5vw,1.8rem)] tracking-wider">

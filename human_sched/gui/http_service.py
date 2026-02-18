@@ -35,6 +35,7 @@ class SchedulerHttpService:
         "port",
         "base_url",
         "static_dir",
+        "frontend_redirect_url",
         "_httpd",
         "_running",
         "_lock",
@@ -52,6 +53,7 @@ class SchedulerHttpService:
         host: str,
         port: int,
         static_dir: Path,
+        frontend_redirect_url: str | None = None,
     ) -> None:
         self.facade = facade
         self.metadata = metadata
@@ -59,6 +61,7 @@ class SchedulerHttpService:
         self.port = port
         self.base_url = f"http://{host}:{port}"
         self.static_dir = static_dir.resolve()
+        self.frontend_redirect_url = frontend_redirect_url.rstrip("/") if frontend_redirect_url else None
 
         self._httpd: _GuiThreadingHTTPServer | None = None
         self._running = False
@@ -199,6 +202,13 @@ def build_request_handler(service: SchedulerHttpService) -> type[BaseHTTPRequest
                     self._handle_sse(query)
                     return
 
+                if service.frontend_redirect_url:
+                    target = f"{service.frontend_redirect_url}{self.path}"
+                    self.send_response(307)
+                    self.send_header("Location", target)
+                    self.end_headers()
+                    return
+
                 self._serve_static(path)
             except KeyError as exc:
                 self._write_error(404, str(exc))
@@ -255,6 +265,11 @@ def build_request_handler(service: SchedulerHttpService) -> type[BaseHTTPRequest
                 if path == "/api/what-next":
                     payload = service.facade.what_next()
                     self._write_json({"dispatch": payload})
+                    return
+
+                if path == "/api/reset":
+                    payload = service.facade.reset_simulation()
+                    self._write_json(payload)
                     return
 
                 task_match = _TASK_ACTION_RE.match(path)
