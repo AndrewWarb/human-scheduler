@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import datetime
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
 
 from xnu_sched.thread import Thread, ThreadState
 
@@ -22,6 +22,7 @@ class Task:
     description: str = ""
     notes: str = ""
     due_at: datetime | None = None
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     @property
     def task_id(self) -> int:

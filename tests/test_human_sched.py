@@ -139,6 +139,95 @@ class HumanSchedulerTests(unittest.TestCase):
         assert completed is not None
         self.assertEqual(completed.thread.state, ThreadState.TERMINATED)
 
+    def test_delete_life_area_removes_its_tasks(self) -> None:
+        work = self.scheduler.create_life_area("Work")
+        home = self.scheduler.create_life_area("Home")
+        self.scheduler.create_task(
+            life_area=work,
+            title="Write report",
+            urgency_tier=UrgencyTier.NORMAL,
+        )
+        keep_task = self.scheduler.create_task(
+            life_area=home,
+            title="Laundry",
+            urgency_tier=UrgencyTier.IMPORTANT,
+        )
+
+        deleted_area, deleted_task_count = self.scheduler.delete_life_area(work.life_area_id)
+
+        self.assertEqual(deleted_area.life_area_id, work.life_area_id)
+        self.assertEqual(deleted_task_count, 1)
+        self.assertEqual(len(self.scheduler.list_life_areas()), 1)
+        self.assertEqual(self.scheduler.list_life_areas()[0].life_area_id, home.life_area_id)
+        self.assertEqual(len(self.scheduler.list_tasks()), 1)
+        self.assertEqual(self.scheduler.list_tasks()[0].task_id, keep_task.task_id)
+
+    def test_rename_life_area_updates_name_lookup(self) -> None:
+        area = self.scheduler.create_life_area("Study")
+        renamed = self.scheduler.rename_life_area(area.life_area_id, name="Deep Study")
+
+        self.assertEqual(renamed.name, "Deep Study")
+        self.assertEqual(renamed.thread_group.name, "Deep Study")
+        with self.assertRaises(KeyError):
+            self.scheduler.create_task(
+                life_area="Study",
+                title="Old name should fail",
+                urgency_tier=UrgencyTier.NORMAL,
+            )
+        task = self.scheduler.create_task(
+            life_area="Deep Study",
+            title="New name works",
+            urgency_tier=UrgencyTier.NORMAL,
+        )
+        self.assertEqual(task.life_area.life_area_id, area.life_area_id)
+
+    def test_persistence_round_trip_json_files(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            notifier = FakeNotifier()
+            clock = FakeClock(datetime(2026, 2, 1, tzinfo=timezone.utc))
+            time_scale = TimeScaleAdapter(
+                config=TimeScaleConfig(hours_per_us=0.00025, max_catchup_ticks=4),
+                wall_epoch=clock.now(),
+                now_provider=clock.now,
+            )
+
+            scheduler_a = HumanTaskScheduler(
+                notifier=notifier,
+                time_scale=time_scale,
+                enable_timers=False,
+                persistence_dir=temp_dir,
+            )
+            try:
+                area = scheduler_a.create_life_area("Work", description="Career lane")
+                scheduler_a.rename_life_area(area.life_area_id, name="Deep Work")
+                scheduler_a.create_task(
+                    life_area="Deep Work",
+                    title="Write architecture note",
+                    urgency_tier=UrgencyTier.IMPORTANT,
+                    description="Two-page draft",
+                    start_runnable=False,
+                )
+            finally:
+                scheduler_a.close()
+
+            scheduler_b = HumanTaskScheduler(
+                notifier=FakeNotifier(),
+                time_scale=time_scale,
+                enable_timers=False,
+                persistence_dir=temp_dir,
+            )
+            try:
+                areas = scheduler_b.list_life_areas()
+                tasks = scheduler_b.list_tasks()
+                self.assertEqual(len(areas), 1)
+                self.assertEqual(areas[0].name, "Deep Work")
+                self.assertEqual(len(tasks), 1)
+                self.assertEqual(tasks[0].title, "Write architecture note")
+                self.assertEqual(tasks[0].life_area.name, "Deep Work")
+                self.assertEqual(tasks[0].state, ThreadState.WAITING)
+            finally:
+                scheduler_b.close()
+
     def test_lazy_catchup_auto_pauses_after_missed_quantum(self) -> None:
         area = self.scheduler.create_life_area("Health")
         task = self.scheduler.create_task(

@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
+import json
+from pathlib import Path
 from threading import RLock, Timer
-from typing import Callable
+from typing import Any, Callable
 
 from xnu_sched.clutch import SchedClutch
 from xnu_sched.constants import (
@@ -62,6 +64,8 @@ class HumanTaskScheduler:
         "_quantum_notification_id",
         "_tick_notification_id",
         "_last_tick_us",
+        "_persistence_dir",
+        "_suspend_persistence",
     )
 
     def __init__(
@@ -72,6 +76,7 @@ class HumanTaskScheduler:
         time_scale: TimeScaleAdapter | None = None,
         enable_timers: bool = True,
         now_provider: Callable[[], datetime] | None = None,
+        persistence_dir: str | Path | None = None,
     ) -> None:
         if time_scale is None:
             cfg = load_time_scale_config(env_file)
@@ -97,6 +102,16 @@ class HumanTaskScheduler:
         self._quantum_notification_id: str | None = None
         self._tick_notification_id: str | None = None
         self._last_tick_us = 0
+        self._persistence_dir = (
+            Path(persistence_dir).expanduser().resolve()
+            if persistence_dir
+            else None
+        )
+        self._suspend_persistence = False
+
+        if self._persistence_dir is not None:
+            self._persistence_dir.mkdir(parents=True, exist_ok=True)
+            self._load_persisted_state_unlocked()
 
         self._arm_tick_timer()
 
@@ -125,7 +140,37 @@ class HumanTaskScheduler:
             self.life_areas_by_id[life_area.life_area_id] = life_area
             self._life_areas_by_name[key] = life_area
             self.scheduler.all_thread_groups.append(tg)
+            self._persist_state_unlocked()
             return life_area
+
+    def rename_life_area(
+        self,
+        life_area: LifeArea | int | str,
+        *,
+        name: str,
+    ) -> LifeArea:
+        """Rename an existing life area."""
+        with self._lock:
+            area = self._resolve_life_area(life_area)
+            new_name = name.strip()
+            if not new_name:
+                raise ValueError("Life area name is required")
+
+            old_key = self._normalize_name(area.name)
+            new_key = self._normalize_name(new_name)
+
+            if new_key != old_key and new_key in self._life_areas_by_name:
+                raise ValueError(f"Life area name already exists: {new_name!r}")
+
+            area.name = new_name
+            area.thread_group.name = new_name
+
+            if new_key != old_key:
+                self._life_areas_by_name.pop(old_key, None)
+                self._life_areas_by_name[new_key] = area
+
+            self._persist_state_unlocked()
+            return area
 
     def create_task(
         self,
@@ -178,7 +223,61 @@ class HumanTaskScheduler:
                     trigger_when_idle=False,
                 )
 
+            self._persist_state_unlocked()
             return task
+
+    def delete_life_area(self, life_area: LifeArea | int | str) -> tuple[LifeArea, int]:
+        """Delete a life area and all tasks currently assigned to it."""
+        with self._lock:
+            now_us = self._now_us()
+            self._apply_lazy_catchup(now_us)
+
+            area = self._resolve_life_area(life_area)
+            tasks = [
+                task
+                for task_id in list(area.task_ids)
+                if (task := self.tasks_by_id.get(task_id)) is not None
+            ]
+
+            running_task: Task | None = None
+            for task in tasks:
+                if task.thread.state == ThreadState.RUNNING:
+                    running_task = task
+                    break
+
+            ordered_tasks = [task for task in tasks if task is not running_task]
+            if running_task is not None:
+                ordered_tasks.append(running_task)
+
+            for task in ordered_tasks:
+                thread = task.thread
+                if thread.state == ThreadState.RUNNABLE:
+                    self.scheduler.thread_remove(thread, now_us)
+                elif thread.state == ThreadState.RUNNING:
+                    new_thread = self.scheduler.thread_block(
+                        thread,
+                        self.processor,
+                        now_us,
+                    )
+                    if new_thread is not None:
+                        self._arm_quantum_for_active(now_us)
+                    else:
+                        self._cancel_quantum_artifacts(reset_quantum_end=True)
+
+                thread.state = ThreadState.TERMINATED
+
+                area.task_ids.discard(task.task_id)
+                self.tasks_by_id.pop(task.task_id, None)
+                if thread in self.scheduler.all_threads:
+                    self.scheduler.all_threads.remove(thread)
+
+            self.life_areas_by_id.pop(area.life_area_id, None)
+            self._life_areas_by_name.pop(self._normalize_name(area.name), None)
+            if area.thread_group in self.scheduler.all_thread_groups:
+                self.scheduler.all_thread_groups.remove(area.thread_group)
+
+            self._persist_state_unlocked()
+            return area, len(ordered_tasks)
 
     def pause_task(self, task_id: int | None = None) -> Task | None:
         with self._lock:
@@ -199,6 +298,7 @@ class HumanTaskScheduler:
                 self.scheduler.thread_remove(thread, now_us)
                 thread.state = ThreadState.WAITING
                 thread.last_run_time = now_us
+                self._persist_state_unlocked()
                 return task
 
             if thread.state == ThreadState.RUNNING:
@@ -207,6 +307,7 @@ class HumanTaskScheduler:
                     self._arm_quantum_for_active(now_us)
                 else:
                     self._cancel_quantum_artifacts(reset_quantum_end=True)
+                self._persist_state_unlocked()
                 return task
 
             return task
@@ -229,6 +330,7 @@ class HumanTaskScheduler:
                     now_us,
                     trigger_when_idle=False,
                 )
+                self._persist_state_unlocked()
             return task
 
     def complete_task(self, task_id: int | None = None) -> Task | None:
@@ -254,6 +356,7 @@ class HumanTaskScheduler:
                 self.scheduler.thread_remove(thread, now_us)
 
             thread.state = ThreadState.TERMINATED
+            self._persist_state_unlocked()
             return task
 
     # ------------------------------------------------------------------
@@ -279,6 +382,7 @@ class HumanTaskScheduler:
                 )
                 active = self.processor.active_thread
                 if active is None:
+                    self._persist_state_unlocked()
                     return None
 
                 reason = self._derive_selection_reason(trace_before, switch_before)
@@ -287,12 +391,14 @@ class HumanTaskScheduler:
 
             task = self.tasks_by_id.get(active.tid)
             if task is None:
+                self._persist_state_unlocked()
                 return None
 
             remaining_us = max(0, self.processor.quantum_end - now_us)
             if remaining_us == 0:
                 remaining_us = active.quantum_remaining
 
+            self._persist_state_unlocked()
             return Dispatch(
                 task=task,
                 life_area=task.life_area,
@@ -332,6 +438,7 @@ class HumanTaskScheduler:
             self._arm_quantum_for_active(now_us)
         else:
             self._cancel_quantum_artifacts(reset_quantum_end=True)
+        self._persist_state_unlocked()
 
     def _apply_tick_catchup(self, now_us: int) -> None:
         if now_us <= self._last_tick_us:
@@ -627,9 +734,204 @@ class HumanTaskScheduler:
             self.notifier.cancel_notification(self._tick_notification_id)
             self._tick_notification_id = None
 
+    def _persist_state_unlocked(self) -> None:
+        if self._persistence_dir is None or self._suspend_persistence:
+            return
+
+        life_areas_path = self._persistence_dir / "life_areas.json"
+        tasks_path = self._persistence_dir / "tasks.json"
+
+        life_areas_payload: list[dict[str, Any]] = []
+        for area in sorted(
+            self.life_areas_by_id.values(),
+            key=lambda item: item.life_area_id,
+        ):
+            life_areas_payload.append(
+                {
+                    "id": area.life_area_id,
+                    "name": area.name,
+                    "description": area.description,
+                }
+            )
+
+        tasks_payload: list[dict[str, Any]] = []
+        for task in sorted(self.tasks_by_id.values(), key=lambda item: item.task_id):
+            tasks_payload.append(
+                {
+                    "id": task.task_id,
+                    "title": task.title,
+                    "life_area_id": task.life_area.life_area_id,
+                    "life_area_name": task.life_area.name,
+                    "urgency_tier": task.urgency_tier.value,
+                    "description": task.description,
+                    "notes": task.notes,
+                    "due_at": task.due_at.isoformat() if task.due_at else None,
+                    "created_at": task.created_at.isoformat(),
+                    "state": task.state.name.lower(),
+                }
+            )
+
+        self._write_json_atomic(life_areas_path, life_areas_payload)
+        self._write_json_atomic(tasks_path, tasks_payload)
+
+    def _load_persisted_state_unlocked(self) -> None:
+        if self._persistence_dir is None:
+            return
+
+        life_areas_path = self._persistence_dir / "life_areas.json"
+        tasks_path = self._persistence_dir / "tasks.json"
+        if not life_areas_path.exists() and not tasks_path.exists():
+            return
+
+        raw_life_areas = self._read_json_list(life_areas_path)
+        raw_tasks = self._read_json_list(tasks_path)
+        id_to_name: dict[int, str] = {}
+
+        self._suspend_persistence = True
+        try:
+            for row in raw_life_areas:
+                name = str(row.get("name", "")).strip()
+                if not name:
+                    continue
+                description = str(row.get("description", ""))
+                area = self.create_life_area(name=name, description=description)
+                saved_id = row.get("id")
+                if isinstance(saved_id, int):
+                    id_to_name[saved_id] = area.name
+                elif isinstance(saved_id, str) and saved_id.isdigit():
+                    id_to_name[int(saved_id)] = area.name
+
+            for row in raw_tasks:
+                title = str(row.get("title", "")).strip()
+                if not title:
+                    continue
+
+                life_area_name = str(row.get("life_area_name", "")).strip()
+                if not life_area_name:
+                    saved_life_area_id = row.get("life_area_id")
+                    if isinstance(saved_life_area_id, int):
+                        life_area_name = id_to_name.get(saved_life_area_id, "")
+                    elif (
+                        isinstance(saved_life_area_id, str)
+                        and saved_life_area_id.isdigit()
+                    ):
+                        life_area_name = id_to_name.get(int(saved_life_area_id), "")
+                if not life_area_name:
+                    continue
+
+                urgency_tier = str(row.get("urgency_tier", UrgencyTier.NORMAL.value))
+                description = str(row.get("description", ""))
+                notes = str(row.get("notes", ""))
+                due_at = self._parse_iso_datetime(row.get("due_at"))
+
+                task = self.create_task(
+                    life_area=life_area_name,
+                    title=title,
+                    urgency_tier=urgency_tier,
+                    description=description,
+                    notes=notes,
+                    due_at=due_at,
+                    start_runnable=False,
+                )
+
+                created_at = self._parse_iso_datetime(row.get("created_at"))
+                if created_at is not None:
+                    task.created_at = created_at
+
+                state = str(row.get("state", "waiting")).strip().lower()
+                if state in {"runnable", "running"}:
+                    self.resume_task(task.task_id)
+                elif state == "terminated":
+                    self.complete_task(task.task_id)
+        finally:
+            self._suspend_persistence = False
+
+        self._persist_state_unlocked()
+
+    @staticmethod
+    def _write_json_atomic(path: Path, payload: Any) -> None:
+        serialized = json.dumps(payload, indent=2, sort_keys=True)
+        temp_path = path.with_suffix(f"{path.suffix}.tmp")
+        temp_path.write_text(serialized, encoding="utf-8")
+        temp_path.replace(path)
+
+    @staticmethod
+    def _read_json_list(path: Path) -> list[dict[str, Any]]:
+        if not path.exists():
+            return []
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return []
+        if not isinstance(data, list):
+            return []
+        rows: list[dict[str, Any]] = []
+        for item in data:
+            if isinstance(item, dict):
+                rows.append(item)
+        return rows
+
+    @staticmethod
+    def _parse_iso_datetime(value: object) -> datetime | None:
+        if not isinstance(value, str):
+            return None
+        text = value.strip()
+        if not text:
+            return None
+        if text.endswith("Z"):
+            text = f"{text[:-1]}+00:00"
+        try:
+            parsed = datetime.fromisoformat(text)
+        except ValueError:
+            return None
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed
+
     # ------------------------------------------------------------------
     # Lookup / formatting helpers
     # ------------------------------------------------------------------
+    def list_life_areas(self) -> list[LifeArea]:
+        """Return all life areas as a snapshot list."""
+        with self._lock:
+            return list(self.life_areas_by_id.values())
+
+    def list_tasks(self) -> list[Task]:
+        """Return all tasks as a snapshot list."""
+        with self._lock:
+            return list(self.tasks_by_id.values())
+
+    def get_task(self, task_id: int) -> Task | None:
+        """Look up a single task by id."""
+        with self._lock:
+            return self.tasks_by_id.get(task_id)
+
+    def get_active_task(self) -> Task | None:
+        """Return the currently running task, if any."""
+        with self._lock:
+            active = self.processor.active_thread
+            if active is None:
+                return None
+            return self.tasks_by_id.get(active.tid)
+
+    def get_dispatch_snapshot(self) -> dict[str, object]:
+        """Expose active dispatch state for GUI/status queries."""
+        with self._lock:
+            now_us = self._now_us()
+            active = self.processor.active_thread
+            task: Task | None = None
+            if active is not None:
+                task = self.tasks_by_id.get(active.tid)
+
+            return {
+                "now_us": now_us,
+                "quantum_end_us": self.processor.quantum_end,
+                "active_task": task,
+                "active_thread": active,
+                "last_switch_reason": self._last_switch_reason_unlocked(),
+                "last_switch_timestamp_us": self._last_switch_timestamp_us_unlocked(),
+            }
+
     def _derive_selection_reason(self, trace_before: int, switch_before: int) -> str:
         # Prefer thread_select trace because it reflects the internal comparator path.
         if len(self.scheduler.trace_log) > trace_before:
@@ -644,6 +946,30 @@ class HumanTaskScheduler:
                 return last.split(marker, 1)[1]
 
         return "Selected highest-ranked runnable task."
+
+    def _last_switch_reason_unlocked(self) -> str | None:
+        if not self.scheduler.processor_switch_log:
+            return None
+        last = self.scheduler.processor_switch_log[-1]
+        marker = "| reason: "
+        if marker not in last:
+            return None
+        return last.split(marker, 1)[1]
+
+    def _last_switch_timestamp_us_unlocked(self) -> int | None:
+        if not self.scheduler.processor_switch_log:
+            return None
+        last = self.scheduler.processor_switch_log[-1]
+        if not last.startswith("["):
+            return None
+        end = last.find("us]")
+        if end <= 1:
+            return None
+        raw = last[1:end].strip()
+        try:
+            return int(raw)
+        except ValueError:
+            return None
 
     def _resolve_life_area(self, life_area: LifeArea | int | str) -> LifeArea:
         if isinstance(life_area, LifeArea):
