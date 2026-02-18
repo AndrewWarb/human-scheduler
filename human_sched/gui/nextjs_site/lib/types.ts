@@ -6,6 +6,17 @@ export type UrgencyTier =
   | "maintenance"
   | "someday";
 
+export const XNU_URGENCY_LABELS: Partial<
+  Record<string, { short: string; xnu: string; human: string }>
+> = {
+  critical:     { short: "FIXPRI", xnu: "TH_BUCKET_FIXPRI",    human: "Fixed-priority" },
+  active_focus: { short: "FG",     xnu: "TH_BUCKET_SHARE_FG",  human: "Foreground" },
+  important:    { short: "IN",     xnu: "TH_BUCKET_SHARE_IN",  human: "User-initiated" },
+  normal:       { short: "DF",     xnu: "TH_BUCKET_SHARE_DF",  human: "Default" },
+  maintenance:  { short: "UT",     xnu: "TH_BUCKET_SHARE_UT",  human: "Utility" },
+  someday:      { short: "BG",     xnu: "TH_BUCKET_SHARE_BG",  human: "Background" },
+};
+
 export interface Task {
   id: number;
   title: string;

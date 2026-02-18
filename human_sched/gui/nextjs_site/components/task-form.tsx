@@ -1,43 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { XNU_URGENCY_LABELS } from "@/lib/types";
 import type { AppSettings, LifeArea } from "@/lib/types";
-
-const XNU_URGENCY_LABELS: Record<
-  string,
-  { short: string; xnu: string; human: string }
-> = {
-  critical: {
-    short: "FIXPRI",
-    xnu: "TH_BUCKET_FIXPRI",
-    human: "Fixed-priority",
-  },
-  active_focus: {
-    short: "FG",
-    xnu: "TH_BUCKET_SHARE_FG",
-    human: "Foreground",
-  },
-  important: {
-    short: "IN",
-    xnu: "TH_BUCKET_SHARE_IN",
-    human: "User-initiated",
-  },
-  normal: {
-    short: "DF",
-    xnu: "TH_BUCKET_SHARE_DF",
-    human: "Default",
-  },
-  maintenance: {
-    short: "UT",
-    xnu: "TH_BUCKET_SHARE_UT",
-    human: "Utility",
-  },
-  someday: {
-    short: "BG",
-    xnu: "TH_BUCKET_SHARE_BG",
-    human: "Background",
-  },
-};
 
 interface TaskFormProps {
   settings: AppSettings | null;

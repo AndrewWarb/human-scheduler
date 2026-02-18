@@ -5,6 +5,7 @@ import { Card } from "../card";
 import { Pill } from "../pill";
 import { TaskActions } from "../task-actions";
 import { TaskForm } from "../task-form";
+import { XNU_URGENCY_LABELS } from "@/lib/types";
 import type { Task } from "@/lib/types";
 
 function formatTimestamp(iso: string | null): string {
@@ -41,7 +42,12 @@ function TaskItem({
       </div>
       <div className="flex flex-wrap gap-1.5">
         <Pill>ID: {task.id}</Pill>
-        <Pill>{task.urgency_label}</Pill>
+        <Pill>
+          {task.urgency_label}
+          {XNU_URGENCY_LABELS[task.urgency_tier]
+            ? ` (${XNU_URGENCY_LABELS[task.urgency_tier].short} / ${XNU_URGENCY_LABELS[task.urgency_tier].human})`
+            : ""}
+        </Pill>
         <Pill>State: {task.state}</Pill>
       </div>
       <p className="font-mono text-[0.8rem] text-mono-ink">
