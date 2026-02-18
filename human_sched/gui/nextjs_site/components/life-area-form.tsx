@@ -3,7 +3,7 @@
 import { useState } from "react";
 
 interface LifeAreaFormProps {
-  onSubmit: (body: { name: string; description: string }) => Promise<void>;
+  onSubmit: (body: { name: string }) => Promise<void>;
 }
 
 export function LifeAreaForm({ onSubmit }: LifeAreaFormProps) {
@@ -19,7 +19,6 @@ export function LifeAreaForm({ onSubmit }: LifeAreaFormProps) {
     try {
       await onSubmit({
         name: (data.get("name") as string).trim(),
-        description: (data.get("description") as string).trim(),
       });
       form.reset();
     } catch (err) {
@@ -35,14 +34,6 @@ export function LifeAreaForm({ onSubmit }: LifeAreaFormProps) {
           name="name"
           type="text"
           required
-          className="field-control"
-        />
-      </label>
-      <label className="field-label">
-        Description
-        <textarea
-          name="description"
-          rows={2}
           className="field-control"
         />
       </label>

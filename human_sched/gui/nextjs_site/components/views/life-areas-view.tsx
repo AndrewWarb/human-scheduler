@@ -7,6 +7,15 @@ import { Card } from "../card";
 import { Pill } from "../pill";
 import { LifeAreaForm } from "../life-area-form";
 
+const INTERACTIVITY_BUCKET_LABELS: Array<{ key: string; label: string }> = [
+  { key: "FIXPRI", label: "Fixed" },
+  { key: "FG", label: "Foreground" },
+  { key: "IN", label: "Interactive" },
+  { key: "DF", label: "Deferred" },
+  { key: "UT", label: "Utility" },
+  { key: "BG", label: "Background" },
+];
+
 export function LifeAreasView() {
   const { state, doCreateLifeArea, doDeleteLifeArea, doRenameLifeArea, showToast } =
     useApp();
@@ -52,7 +61,7 @@ export function LifeAreasView() {
 
   return (
     <div className="animate-[fade-in_0.25s_ease]">
-      <div className="grid grid-cols-2 gap-3.5 max-[920px]:grid-cols-1">
+      <div className="grid items-start grid-cols-2 gap-3.5 max-[920px]:grid-cols-1">
         <Card>
           <p className="section-eyebrow">Create Life Area</p>
           <LifeAreaForm onSubmit={doCreateLifeArea} />
@@ -65,11 +74,25 @@ export function LifeAreasView() {
               <div className="text-muted italic">No life areas yet.</div>
             ) : (
               state.lifeAreas.map((area) => {
-                const scoreText = Object.entries(
-                  area.interactivity_scores ?? {},
-                )
-                  .map(([bucket, score]) => `${bucket}:${score}`)
-                  .join(" | ");
+                const interactivityScores = area.interactivity_scores ?? {};
+                const knownKeys = new Set(
+                  INTERACTIVITY_BUCKET_LABELS.map(({ key }) => key),
+                );
+                const labeledScores = INTERACTIVITY_BUCKET_LABELS
+                  .filter(({ key }) => key in interactivityScores)
+                  .map(({ key, label }) => ({
+                    key,
+                    label,
+                    score: interactivityScores[key],
+                  }));
+                const extraScores = Object.entries(interactivityScores)
+                  .filter(([key]) => !knownKeys.has(key))
+                  .map(([key, score]) => ({
+                    key,
+                    label: key,
+                    score,
+                  }));
+                const allScores = [...labeledScores, ...extraScores];
 
                 return (
                   <article
@@ -105,16 +128,27 @@ export function LifeAreasView() {
                         </button>
                       </div>
                     </div>
-                    <p className="text-muted">
-                      {area.description || "No description"}
-                    </p>
                     <div className="flex flex-wrap gap-1.5">
                       <Pill>ID: {area.id}</Pill>
                       <Pill>Tasks: {area.task_count}</Pill>
                     </div>
-                    <p className="font-mono text-[0.84rem] text-mono-ink">
-                      Interactivity: {scoreText || "--"}
-                    </p>
+                    <div className="interactivity-row">
+                      <span className="interactivity-label">Interactivity</span>
+                      {allScores.length === 0 ? (
+                        <span className="font-mono text-[0.84rem] text-mono-ink">
+                          --
+                        </span>
+                      ) : (
+                        <ul className="interactivity-list">
+                          {allScores.map(({ key, label, score }) => (
+                            <li key={key} className="interactivity-chip">
+                              <span className="interactivity-chip-name">{label}:</span>
+                              <span className="interactivity-chip-value">{score}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
                   </article>
                 );
               })

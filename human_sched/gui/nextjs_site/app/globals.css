@@ -327,9 +327,13 @@ textarea.field-control {
 
 .tab-pill {
   border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 999px;
-  padding: 0.45rem 0.9rem;
+  border-radius: 14px;
+  padding: 0.42rem 0.76rem 0.5rem;
   cursor: pointer;
+  display: grid;
+  justify-items: start;
+  gap: 0.02rem;
+  text-align: left;
   transition:
     border-color 0.2s ease,
     background 0.2s ease,
@@ -350,6 +354,26 @@ textarea.field-control {
   color: #09090b;
   font-weight: 600;
   box-shadow: 0 8px 16px rgba(255, 255, 255, 0.12);
+}
+
+.tab-pill-main {
+  font-size: 0.86rem;
+  letter-spacing: 0.004em;
+}
+
+.tab-pill-sub {
+  display: block;
+  vertical-align: baseline;
+  margin-top: -0.06rem;
+  color: rgba(226, 232, 240, 0.72);
+  font-size: 0.62rem;
+  line-height: 1.15;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.tab-pill-active .tab-pill-sub {
+  color: rgba(24, 24, 27, 0.62);
 }
 
 .connection-pill {
@@ -441,6 +465,53 @@ textarea.field-control {
   border-color: rgba(245, 158, 11, 0.3);
   background: rgba(245, 158, 11, 0.14);
   color: var(--color-warning);
+}
+
+.interactivity-row {
+  display: grid;
+  gap: 0.36rem;
+}
+
+.interactivity-label {
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 0.67rem;
+  color: var(--color-muted);
+}
+
+.interactivity-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.42rem;
+}
+
+.interactivity-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.38rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.04);
+  padding: 0.18rem 0.5rem;
+}
+
+.interactivity-chip-name {
+  color: rgba(226, 232, 240, 0.8);
+  font-size: 0.72rem;
+  font-weight: 500;
+}
+
+.interactivity-chip-value {
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+  color: #f3f4f6;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  line-height: 1;
+  padding: 0.18rem 0.38rem;
 }
 
 .kv-grid {

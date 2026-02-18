@@ -98,9 +98,12 @@ export async function fetchEvents(
 
 export async function createLifeArea(body: {
   name: string;
-  description: string;
+  description?: string;
 }): Promise<LifeArea> {
-  return apiPost("/api/life-areas", body);
+  return apiPost("/api/life-areas", {
+    name: body.name,
+    description: body.description ?? "",
+  });
 }
 
 export async function deleteLifeArea(

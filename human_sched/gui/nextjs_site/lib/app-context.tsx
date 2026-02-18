@@ -121,7 +121,6 @@ interface AppContextValue {
   }) => Promise<void>;
   doCreateLifeArea: (body: {
     name: string;
-    description: string;
   }) => Promise<void>;
   doDeleteLifeArea: (lifeAreaId: number) => Promise<void>;
   doRenameLifeArea: (lifeAreaId: number, name: string) => Promise<void>;
@@ -245,8 +244,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   );
 
   const doCreateLifeArea = useCallback(
-    async (body: { name: string; description: string }) => {
-      await apiCreateLifeArea(body);
+    async (body: { name: string }) => {
+      await apiCreateLifeArea({ name: body.name });
       showToast("Life area created.");
       await refreshAll();
     },

@@ -7,12 +7,12 @@ export type TabId =
   | "activity"
   | "settings";
 
-const TABS: { id: TabId; label: string }[] = [
-  { id: "dashboard", label: "Dashboard" },
-  { id: "life-areas", label: "Life Areas" },
-  { id: "tasks", label: "Tasks" },
-  { id: "activity", label: "Activity" },
-  { id: "settings", label: "Settings" },
+const TABS: { id: TabId; label: string; xnuLabel: string }[] = [
+  { id: "dashboard", label: "Dashboard", xnuLabel: "dispatch + timeslice" },
+  { id: "life-areas", label: "Life Areas", xnuLabel: "thread groups" },
+  { id: "tasks", label: "Tasks", xnuLabel: "threads" },
+  { id: "activity", label: "Activity", xnuLabel: "scheduler trace" },
+  { id: "settings", label: "Settings", xnuLabel: "kernel diagnostics" },
 ];
 
 interface TabNavProps {
@@ -33,7 +33,8 @@ export function TabNav({ active, onChange }: TabNavProps) {
             onClick={() => onChange(tab.id)}
             aria-label={`Open ${tab.label}`}
           >
-            {tab.label}
+            <span className="tab-pill-main">{tab.label}</span>
+            <sub className="tab-pill-sub">{tab.xnuLabel}</sub>
           </button>
         );
       })}
