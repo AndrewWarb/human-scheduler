@@ -121,7 +121,6 @@ export async function createTask(body: {
   title: string;
   life_area_id: number;
   urgency_tier: string;
-  description: string;
 }): Promise<Task> {
   return apiPost("/api/tasks", body);
 }

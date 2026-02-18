@@ -46,7 +46,6 @@ interface TaskFormProps {
     title: string;
     life_area_id: number;
     urgency_tier: string;
-    description: string;
   }) => Promise<void>;
 }
 
@@ -65,7 +64,6 @@ export function TaskForm({ settings, lifeAreas, onSubmit }: TaskFormProps) {
         title: (data.get("title") as string).trim(),
         life_area_id: Number(data.get("life_area_id")),
         urgency_tier: data.get("urgency_tier") as string,
-        description: (data.get("description") as string).trim(),
       });
       form.reset();
     } catch (err) {
@@ -116,14 +114,6 @@ export function TaskForm({ settings, lifeAreas, onSubmit }: TaskFormProps) {
             );
           })}
         </select>
-      </label>
-      <label className="field-label">
-        Description
-        <textarea
-          name="description"
-          rows={2}
-          className="field-control"
-        />
       </label>
       <button
         type="submit"

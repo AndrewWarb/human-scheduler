@@ -22,8 +22,6 @@ function TaskItem({
   isActive: boolean;
   onAction: (id: number, action: "pause" | "resume" | "complete") => void;
 }) {
-  const description = task.description.trim();
-
   return (
     <article className={`surface-item task-item-compact ${isActive ? "surface-item-active" : ""}`}>
       <div className="flex items-start justify-between gap-2">
@@ -46,7 +44,6 @@ function TaskItem({
         <Pill>{task.urgency_label}</Pill>
         <Pill>State: {task.state}</Pill>
       </div>
-      {description && <p className="text-muted">{description}</p>}
       <p className="font-mono text-[0.8rem] text-mono-ink">
         Created: {formatTimestamp(task.created_at)} • Due: {task.due_at ? formatTimestamp(task.due_at) : "--"}
       </p>

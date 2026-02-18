@@ -10,7 +10,6 @@ from typing import Protocol
 class ScenarioTask:
     title: str
     urgency_tier: str
-    description: str = ""
     notes: str = ""
 
 
@@ -38,7 +37,6 @@ class ScenarioFacade(Protocol):
         life_area_id: int,
         title: str,
         urgency_tier: str,
-        description: str = "",
         notes: str = "",
     ) -> dict:
         ...
@@ -62,7 +60,7 @@ _SCENARIOS: dict[str, ScenarioDefinition] = {
             ScenarioLifeArea(
                 name="Work",
                 tasks=(
-                    ScenarioTask("Ship payroll export fix", "critical", "Deadline today."),
+                    ScenarioTask("Ship payroll export fix", "critical"),
                     ScenarioTask("Write onboarding guide", "important"),
                     ScenarioTask("Refactor metrics endpoint", "normal"),
                 ),
@@ -171,7 +169,6 @@ def apply_seed_scenario(facade: ScenarioFacade, scenario_name: str) -> str:
                 life_area_id=area_id,
                 title=task.title,
                 urgency_tier=task.urgency_tier,
-                description=task.description,
                 notes=task.notes,
             )
 

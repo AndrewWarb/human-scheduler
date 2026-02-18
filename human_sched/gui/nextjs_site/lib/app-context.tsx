@@ -125,7 +125,6 @@ interface AppContextValue {
     title: string;
     life_area_id: number;
     urgency_tier: string;
-    description: string;
   }) => Promise<void>;
   doCreateLifeArea: (body: {
     name: string;
@@ -282,7 +281,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       title: string;
       life_area_id: number;
       urgency_tier: string;
-      description: string;
     }) => {
       await apiCreateTask(body);
       showToast("Task created.");

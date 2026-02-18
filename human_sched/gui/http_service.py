@@ -256,7 +256,6 @@ def build_request_handler(service: SchedulerHttpService) -> type[BaseHTTPRequest
                         life_area_id=int(body.get("life_area_id")),
                         title=str(body.get("title", "")),
                         urgency_tier=str(body.get("urgency_tier", "normal")),
-                        description=str(body.get("description", "")),
                         notes=str(body.get("notes", "")),
                     )
                     self._write_json(payload, status=201)

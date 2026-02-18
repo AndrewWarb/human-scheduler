@@ -257,7 +257,6 @@ class HumanSchedulerTests(unittest.TestCase):
                     life_area="Deep Work",
                     title="Write architecture note",
                     urgency_tier=UrgencyTier.IMPORTANT,
-                    description="Two-page draft",
                     start_runnable=False,
                 )
             finally:

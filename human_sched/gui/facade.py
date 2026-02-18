@@ -86,7 +86,6 @@ class SchedulerGuiFacade:
         life_area_id: int,
         title: str,
         urgency_tier: str,
-        description: str = "",
         notes: str = "",
     ) -> dict[str, Any]:
         def _create() -> dict[str, Any]:
@@ -96,7 +95,6 @@ class SchedulerGuiFacade:
                 life_area=life_area_id,
                 title=title,
                 urgency_tier=urgency_tier,
-                description=description,
                 notes=notes,
                 start_runnable=True,
             )
@@ -365,7 +363,6 @@ class SchedulerGuiFacade:
             "urgency_tier": task.urgency_tier.value,
             "urgency_label": task.urgency_tier.label,
             "state": task.state.name.lower(),
-            "description": task.description,
             "notes": task.notes,
             "due_at": self._iso(task.due_at),
             "created_at": self._iso(task.created_at),
