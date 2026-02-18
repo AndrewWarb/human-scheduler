@@ -558,10 +558,12 @@ textarea.field-control {
   display: inline-flex;
   align-items: center;
   gap: 0.38rem;
+  position: relative;
   border-radius: 999px;
   border: 1px solid rgba(255, 255, 255, 0.16);
   background: rgba(255, 255, 255, 0.04);
   padding: 0.18rem 0.5rem;
+  cursor: help;
 }
 
 .interactivity-chip-name {
@@ -578,6 +580,33 @@ textarea.field-control {
   font-size: 0.72rem;
   line-height: 1;
   padding: 0.18rem 0.38rem;
+}
+
+.interactivity-chip-tooltip {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  transform: translateX(-50%);
+  pointer-events: none;
+  z-index: 6;
+  width: max-content;
+  max-width: min(340px, 78vw);
+  display: grid;
+  gap: 0.22rem;
+  padding: 0.46rem 0.56rem;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  background: rgba(9, 9, 11, 0.95);
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.5);
+  color: #f3f4f6;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  white-space: normal;
+  text-align: left;
+}
+
+.interactivity-chip-tooltip-title {
+  font-weight: 650;
 }
 
 .kv-grid {

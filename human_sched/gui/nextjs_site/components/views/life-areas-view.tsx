@@ -7,13 +7,54 @@ import { Card } from "../card";
 import { Pill } from "../pill";
 import { LifeAreaForm } from "../life-area-form";
 
-const INTERACTIVITY_BUCKET_LABELS: Array<{ key: string; label: string }> = [
-  { key: "FIXPRI", label: "Fixed" },
-  { key: "FG", label: "Foreground" },
-  { key: "IN", label: "Interactive" },
-  { key: "DF", label: "Deferred" },
-  { key: "UT", label: "Utility" },
-  { key: "BG", label: "Background" },
+const INTERACTIVITY_BUCKETS: Array<{
+  key: string;
+  label: string;
+  xnuName: string;
+  description: string;
+}> = [
+  {
+    key: "FIXPRI",
+    label: "Fixed",
+    xnuName: "TH_BUCKET_FIXPRI",
+    description:
+      "Fixed-priority (above-UI) work. Strict priority behavior, outside normal timeshare buckets.",
+  },
+  {
+    key: "FG",
+    label: "Foreground",
+    xnuName: "TH_BUCKET_SHARE_FG",
+    description:
+      "Foreground timeshare work for active, user-visible interactions that should feel responsive.",
+  },
+  {
+    key: "IN",
+    label: "Interactive",
+    xnuName: "TH_BUCKET_SHARE_IN",
+    description:
+      "User-initiated timeshare work started by direct user action and expected to complete soon.",
+  },
+  {
+    key: "DF",
+    label: "Deferred",
+    xnuName: "TH_BUCKET_SHARE_DF",
+    description:
+      "Default timeshare work for normal tasks without explicit urgency boosts or heavy deferral.",
+  },
+  {
+    key: "UT",
+    label: "Utility",
+    xnuName: "TH_BUCKET_SHARE_UT",
+    description:
+      "Utility timeshare work that can progress with less urgency than interactive/foreground tasks.",
+  },
+  {
+    key: "BG",
+    label: "Background",
+    xnuName: "TH_BUCKET_SHARE_BG",
+    description:
+      "Background timeshare work with the lowest responsiveness priority and highest tolerance for delay.",
+  },
 ];
 
 export function LifeAreasView() {
@@ -25,6 +66,7 @@ export function LifeAreasView() {
   const [deletingLifeAreaId, setDeletingLifeAreaId] = useState<number | null>(
     null,
   );
+  const [activeTooltipId, setActiveTooltipId] = useState<string | null>(null);
 
   async function handleRenameLifeArea(area: LifeArea) {
     const raw = window.prompt("Edit life area name:", area.name);
@@ -76,13 +118,15 @@ export function LifeAreasView() {
               state.lifeAreas.map((area) => {
                 const interactivityScores = area.interactivity_scores ?? {};
                 const knownKeys = new Set(
-                  INTERACTIVITY_BUCKET_LABELS.map(({ key }) => key),
+                  INTERACTIVITY_BUCKETS.map(({ key }) => key),
                 );
-                const labeledScores = INTERACTIVITY_BUCKET_LABELS
+                const labeledScores = INTERACTIVITY_BUCKETS
                   .filter(({ key }) => key in interactivityScores)
-                  .map(({ key, label }) => ({
+                  .map(({ key, label, xnuName, description }) => ({
                     key,
                     label,
+                    xnuName,
+                    description,
                     score: interactivityScores[key],
                   }));
                 const extraScores = Object.entries(interactivityScores)
@@ -90,6 +134,8 @@ export function LifeAreasView() {
                   .map(([key, score]) => ({
                     key,
                     label: key,
+                    xnuName: key,
+                    description: "Custom bucket score exposed by the scheduler adapter.",
                     score,
                   }));
                 const allScores = [...labeledScores, ...extraScores];
@@ -140,12 +186,47 @@ export function LifeAreasView() {
                         </span>
                       ) : (
                         <ul className="interactivity-list">
-                          {allScores.map(({ key, label, score }) => (
-                            <li key={key} className="interactivity-chip">
-                              <span className="interactivity-chip-name">{label}:</span>
-                              <span className="interactivity-chip-value">{score}</span>
-                            </li>
-                          ))}
+                          {allScores.map(({ key, label, xnuName, description, score }) => {
+                            const tooltipId = `interactivity-tooltip-${area.id}-${key}`;
+                            const tooltipActive = activeTooltipId === tooltipId;
+
+                            return (
+                              <li
+                                key={key}
+                                className="interactivity-chip"
+                                tabIndex={0}
+                                aria-describedby={tooltipActive ? tooltipId : undefined}
+                                onMouseEnter={() => setActiveTooltipId(tooltipId)}
+                                onMouseLeave={() =>
+                                  setActiveTooltipId((current) => (
+                                    current === tooltipId ? null : current
+                                  ))
+                                }
+                                onFocus={() => setActiveTooltipId(tooltipId)}
+                                onBlur={() =>
+                                  setActiveTooltipId((current) => (
+                                    current === tooltipId ? null : current
+                                  ))
+                                }
+                              >
+                                <span className="interactivity-chip-name">{label}:</span>
+                                <span className="interactivity-chip-value">{score}</span>
+                                {tooltipActive && (
+                                  <span
+                                    className="interactivity-chip-tooltip"
+                                    role="tooltip"
+                                    id={tooltipId}
+                                  >
+                                    <span className="interactivity-chip-tooltip-title">
+                                      {label} ({key})
+                                    </span>
+                                    <span>XNU bucket: {xnuName}</span>
+                                    <span>{description}</span>
+                                  </span>
+                                )}
+                              </li>
+                            );
+                          })}
                         </ul>
                       )}
                     </div>
