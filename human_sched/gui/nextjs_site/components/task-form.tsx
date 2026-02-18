@@ -3,6 +3,42 @@
 import { useState } from "react";
 import type { AppSettings, LifeArea } from "@/lib/types";
 
+const XNU_URGENCY_LABELS: Record<
+  string,
+  { short: string; xnu: string; human: string }
+> = {
+  critical: {
+    short: "FIXPRI",
+    xnu: "TH_BUCKET_FIXPRI",
+    human: "Fixed-priority",
+  },
+  active_focus: {
+    short: "FG",
+    xnu: "TH_BUCKET_SHARE_FG",
+    human: "Foreground",
+  },
+  important: {
+    short: "IN",
+    xnu: "TH_BUCKET_SHARE_IN",
+    human: "User-initiated",
+  },
+  normal: {
+    short: "DF",
+    xnu: "TH_BUCKET_SHARE_DF",
+    human: "Default",
+  },
+  maintenance: {
+    short: "UT",
+    xnu: "TH_BUCKET_SHARE_UT",
+    human: "Utility",
+  },
+  someday: {
+    short: "BG",
+    xnu: "TH_BUCKET_SHARE_BG",
+    human: "Background",
+  },
+};
+
 interface TaskFormProps {
   settings: AppSettings | null;
   lifeAreas: LifeArea[];
@@ -69,11 +105,16 @@ export function TaskForm({ settings, lifeAreas, onSubmit }: TaskFormProps) {
           required
           className="field-control"
         >
-          {(settings?.urgency_tiers ?? []).map((t) => (
-            <option key={t.value} value={t.value}>
-              {t.label}
-            </option>
-          ))}
+          {(settings?.urgency_tiers ?? []).map((t) => {
+            const xnu = XNU_URGENCY_LABELS[t.value];
+            return (
+              <option key={t.value} value={t.value}>
+                {xnu
+                  ? `${t.label} (${xnu.short} / ${xnu.xnu}) - ${xnu.human}`
+                  : t.label}
+              </option>
+            );
+          })}
         </select>
       </label>
       <label className="field-label">
