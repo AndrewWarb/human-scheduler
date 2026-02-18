@@ -20,7 +20,6 @@ class Task:
     urgency_tier: UrgencyTier
     thread: Thread
     notes: str = ""
-    due_at: datetime | None = None
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     @property

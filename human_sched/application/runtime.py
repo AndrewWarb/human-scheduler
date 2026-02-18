@@ -179,7 +179,6 @@ class HumanTaskScheduler:
         *,
         urgency_tier: UrgencyTier | str = UrgencyTier.NORMAL,
         notes: str = "",
-        due_at: datetime | None = None,
         start_runnable: bool = True,
     ) -> Task:
         with self._lock:
@@ -202,7 +201,6 @@ class HumanTaskScheduler:
                 urgency_tier=urgency,
                 thread=thread,
                 notes=notes,
-                due_at=due_at,
             )
 
             self.tasks_by_id[task.task_id] = task
@@ -833,7 +831,6 @@ class HumanTaskScheduler:
                     "life_area_name": task.life_area.name,
                     "urgency_tier": task.urgency_tier.value,
                     "notes": task.notes,
-                    "due_at": task.due_at.isoformat() if task.due_at else None,
                     "created_at": task.created_at.isoformat(),
                     "state": task.state.name.lower(),
                 }
@@ -889,14 +886,12 @@ class HumanTaskScheduler:
 
                 urgency_tier = str(row.get("urgency_tier", UrgencyTier.NORMAL.value))
                 notes = str(row.get("notes", ""))
-                due_at = self._parse_iso_datetime(row.get("due_at"))
 
                 task = self.create_task(
                     life_area=life_area_name,
                     title=title,
                     urgency_tier=urgency_tier,
                     notes=notes,
-                    due_at=due_at,
                     start_runnable=False,
                 )
 

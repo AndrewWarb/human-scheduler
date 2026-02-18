@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-
 from human_sched.application.runtime import HumanTaskScheduler
 from human_sched.domain.life_area import LifeArea
 from human_sched.domain.task import Task
@@ -23,7 +21,6 @@ class CreateTask:
         title: str,
         urgency_tier: UrgencyTier | str = UrgencyTier.NORMAL,
         notes: str = "",
-        due_at: datetime | None = None,
         start_runnable: bool = True,
     ) -> Task:
         return self._scheduler.create_task(
@@ -31,6 +28,5 @@ class CreateTask:
             title=title,
             urgency_tier=urgency_tier,
             notes=notes,
-            due_at=due_at,
             start_runnable=start_runnable,
         )

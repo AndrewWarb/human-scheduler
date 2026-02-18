@@ -45,7 +45,7 @@ function TaskItem({
         <Pill>State: {task.state}</Pill>
       </div>
       <p className="font-mono text-[0.8rem] text-mono-ink">
-        Created: {formatTimestamp(task.created_at)} • Due: {task.due_at ? formatTimestamp(task.due_at) : "--"}
+        Created: {formatTimestamp(task.created_at)}
       </p>
       <TaskActions task={task} onAction={onAction} />
     </article>

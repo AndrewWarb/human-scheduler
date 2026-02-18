@@ -15,7 +15,6 @@ export interface Task {
   urgency_label: string;
   state: string;
   notes: string;
-  due_at: string | null;
   created_at: string;
 }
 

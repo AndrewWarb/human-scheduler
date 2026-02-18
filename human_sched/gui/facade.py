@@ -364,7 +364,6 @@ class SchedulerGuiFacade:
             "urgency_label": task.urgency_tier.label,
             "state": task.state.name.lower(),
             "notes": task.notes,
-            "due_at": self._iso(task.due_at),
             "created_at": self._iso(task.created_at),
         }
 
