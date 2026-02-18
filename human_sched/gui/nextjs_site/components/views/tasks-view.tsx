@@ -26,7 +26,21 @@ function TaskItem({
 
   return (
     <article className={`surface-item task-item-compact ${isActive ? "surface-item-active" : ""}`}>
-      <h3 className="text-[1rem]">{task.title}</h3>
+      <div className="flex items-start justify-between gap-2">
+        <h3 className="text-[1rem]">{task.title}</h3>
+        <button
+          type="button"
+          className="icon-btn icon-btn-danger"
+          aria-label={`Delete task ${task.title}`}
+          title="Delete task"
+          onClick={() => {
+            if (!window.confirm(`Delete task "${task.title}"?`)) return;
+            onAction(task.id, "delete");
+          }}
+        >
+          ×
+        </button>
+      </div>
       <div className="flex flex-wrap gap-1.5">
         <Pill>ID: {task.id}</Pill>
         <Pill>{task.urgency_label}</Pill>

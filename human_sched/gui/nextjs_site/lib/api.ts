@@ -139,7 +139,7 @@ export async function resetSimulation(): Promise<{
 
 export async function taskAction(
   taskId: number,
-  action: "pause" | "resume" | "complete",
+  action: "pause" | "resume" | "complete" | "delete",
 ): Promise<unknown> {
   return apiPost(`/api/tasks/${taskId}/${action}`, {});
 }

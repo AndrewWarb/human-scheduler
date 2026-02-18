@@ -4,12 +4,18 @@ import type { Task } from "@/lib/types";
 
 interface TaskActionsProps {
   task: Task;
-  onAction: (taskId: number, action: "pause" | "resume" | "complete") => void;
+  onAction: (
+    taskId: number,
+    action: "pause" | "resume" | "complete" | "delete",
+  ) => void;
 }
 
 export function TaskActions({ task, onAction }: TaskActionsProps) {
-  const actions: { label: string; action: "pause" | "resume" | "complete" }[] =
-    [];
+  const actions: {
+    label: string;
+    action: "pause" | "resume" | "complete";
+    className?: string;
+  }[] = [];
 
   if (task.state === "running" || task.state === "runnable") {
     actions.push({ label: "Pause", action: "pause" });
@@ -27,10 +33,11 @@ export function TaskActions({ task, onAction }: TaskActionsProps) {
 
   return (
     <div className="flex gap-2 flex-wrap">
-      {actions.map(({ label, action }) => (
+      {actions.map(({ label, action, className }) => (
         <button
           key={action}
-          className="btn btn-ghost"
+          type="button"
+          className={className ?? "btn btn-ghost"}
           onClick={(e) => {
             e.stopPropagation();
             onAction(task.id, action);

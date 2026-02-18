@@ -136,6 +136,19 @@ class SchedulerGuiFacade:
 
         return self._run_command(_complete)
 
+    def delete_task(self, *, task_id: int) -> dict[str, Any]:
+        def _delete() -> dict[str, Any]:
+            task = self._scheduler.delete_task(task_id)
+            if self._last_dispatch_task_id == task.task_id:
+                self._last_dispatch_task_id = None
+                self._last_dispatch_at = None
+                self._last_dispatch_reason = None
+                self._last_dispatch_decision = None
+            self.publish_info(f"Deleted '{task.title}'.", related_task_id=task.task_id)
+            return self._serialize_task(task)
+
+        return self._run_command(_delete)
+
     def reset_simulation(self) -> dict[str, Any]:
         def _reset() -> dict[str, Any]:
             reset_task_count = self._scheduler.reset_simulation()

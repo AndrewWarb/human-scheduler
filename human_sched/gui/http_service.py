@@ -15,7 +15,7 @@ from urllib.parse import parse_qs, urlparse
 from human_sched.gui.contract import GuiAdapterMetadata
 from human_sched.gui.facade import SchedulerGuiFacade
 
-_TASK_ACTION_RE = re.compile(r"^/api/tasks/(?P<task_id>\d+)/(pause|resume|complete)$")
+_TASK_ACTION_RE = re.compile(r"^/api/tasks/(?P<task_id>\d+)/(pause|resume|complete|delete)$")
 _LIFE_AREA_DELETE_RE = re.compile(r"^/api/life-areas/(?P<life_area_id>\d+)/delete$")
 _LIFE_AREA_RENAME_RE = re.compile(r"^/api/life-areas/(?P<life_area_id>\d+)/rename$")
 
@@ -279,8 +279,10 @@ def build_request_handler(service: SchedulerHttpService) -> type[BaseHTTPRequest
                         payload = service.facade.pause_task(task_id=task_id)
                     elif path.endswith("/resume"):
                         payload = service.facade.resume_task(task_id=task_id)
-                    else:
+                    elif path.endswith("/complete"):
                         payload = service.facade.complete_task(task_id=task_id)
+                    else:
+                        payload = service.facade.delete_task(task_id=task_id)
                     self._write_json(payload)
                     return
 

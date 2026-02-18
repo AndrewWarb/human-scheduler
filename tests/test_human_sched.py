@@ -164,6 +164,32 @@ class HumanSchedulerTests(unittest.TestCase):
         self.assertEqual(len(self.scheduler.list_tasks()), 1)
         self.assertEqual(self.scheduler.list_tasks()[0].task_id, keep_task.task_id)
 
+    def test_delete_task_removes_it_from_scheduler(self) -> None:
+        area = self.scheduler.create_life_area("Work")
+        first = self.scheduler.create_task(
+            life_area=area,
+            title="Prepare launch notes",
+            urgency_tier=UrgencyTier.CRITICAL,
+        )
+        second = self.scheduler.create_task(
+            life_area=area,
+            title="Tidy backlog",
+            urgency_tier=UrgencyTier.MAINTENANCE,
+        )
+
+        dispatch = self.scheduler.what_next()
+        self.assertIsNotNone(dispatch)
+        assert dispatch is not None
+        self.assertEqual(dispatch.task.task_id, first.task_id)
+
+        deleted = self.scheduler.delete_task(first.task_id)
+
+        self.assertEqual(deleted.task_id, first.task_id)
+        self.assertNotIn(first.task_id, self.scheduler.tasks_by_id)
+        self.assertNotIn(first.task_id, area.task_ids)
+        self.assertEqual(len(self.scheduler.list_tasks()), 1)
+        self.assertEqual(self.scheduler.list_tasks()[0].task_id, second.task_id)
+
     def test_reset_simulation_requeues_unfinished_tasks(self) -> None:
         area = self.scheduler.create_life_area("Work")
         active = self.scheduler.create_task(

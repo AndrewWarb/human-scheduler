@@ -124,6 +124,19 @@ class GuiPlatformTests(unittest.TestCase):
         self.assertEqual(reset["reset_task_count"], 1)
         self.assertIsNone(self.facade.current_dispatch())
 
+    def test_facade_can_delete_task(self) -> None:
+        area = self.facade.create_life_area(name="Admin")
+        task = self.facade.create_task(
+            life_area_id=int(area["id"]),
+            title="Close sprint board",
+            urgency_tier="normal",
+        )
+
+        deleted = self.facade.delete_task(task_id=int(task["id"]))
+
+        self.assertEqual(deleted["id"], task["id"])
+        self.assertEqual(len(self.facade.list_tasks()), 0)
+
     def test_facade_life_area_payload_omits_description(self) -> None:
         area = self.facade.create_life_area(name="Focus")
 

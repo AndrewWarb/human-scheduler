@@ -119,7 +119,7 @@ interface AppContextValue {
   resetSimulation: () => Promise<void>;
   doTaskAction: (
     taskId: number,
-    action: "pause" | "resume" | "complete",
+    action: "pause" | "resume" | "complete" | "delete",
   ) => Promise<void>;
   doCreateTask: (body: {
     title: string;
@@ -255,10 +255,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [refreshAll, showToast]);
 
   const doTaskAction = useCallback(
-    async (taskId: number, action: "pause" | "resume" | "complete") => {
+    async (taskId: number, action: "pause" | "resume" | "complete" | "delete") => {
       try {
         await apiTaskAction(taskId, action);
-        showToast(`Task ${action}d.`);
+        showToast(action === "delete" ? "Task deleted." : `Task ${action}d.`);
 
         const [tasksRes, dispatchRes, diag] = await Promise.all([
           fetchTasks().catch(() => null),

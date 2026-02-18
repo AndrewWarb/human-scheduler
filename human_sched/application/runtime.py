@@ -359,6 +359,33 @@ class HumanTaskScheduler:
             self._persist_state_unlocked()
             return task
 
+    def delete_task(self, task_id: int) -> Task:
+        """Delete a task from scheduler state."""
+        with self._lock:
+            now_us = self._now_us()
+            self._apply_lazy_catchup(now_us)
+
+            task = self._require_task(task_id)
+            thread = task.thread
+
+            if thread.state == ThreadState.RUNNABLE:
+                self.scheduler.thread_remove(thread, now_us)
+            elif thread.state == ThreadState.RUNNING:
+                new_thread = self.scheduler.thread_block(thread, self.processor, now_us)
+                if new_thread is not None:
+                    self._arm_quantum_for_active(now_us)
+                else:
+                    self._cancel_quantum_artifacts(reset_quantum_end=True)
+
+            thread.state = ThreadState.TERMINATED
+            task.life_area.task_ids.discard(task.task_id)
+            self.tasks_by_id.pop(task.task_id, None)
+            if thread in self.scheduler.all_threads:
+                self.scheduler.all_threads.remove(thread)
+
+            self._persist_state_unlocked()
+            return task
+
     def reset_simulation(self) -> int:
         """Reset dispatch state and re-queue unfinished tasks from a clean baseline."""
         with self._lock:
