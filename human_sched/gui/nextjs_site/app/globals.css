@@ -151,13 +151,13 @@ body::after {
 }
 
 .sim-launch {
-  margin: 42px auto 40px;
+  margin: 28px auto 28px;
   width: 100%;
   display: flex;
   justify-content: center;
   align-items: center;
   flex-wrap: wrap;
-  column-gap: 18px;
+  column-gap: 10px;
   row-gap: 10px;
 }
 
@@ -169,19 +169,20 @@ body::after {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 0 1.1rem;
+  gap: 0.5rem;
+  padding: 0 1.3rem;
   border-radius: 999px;
   border: 2px solid rgba(255, 255, 255, 0.9);
   line-height: 1;
   font: inherit;
-  font-size: 1rem;
+  font-size: 0.92rem;
   font-weight: 700;
   letter-spacing: 0.01em;
   cursor: pointer;
   background: #f8fafc;
   color: #09090b;
   box-shadow: none;
-  transition: none;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
 }
 
 .sim-launch-btn:hover {
@@ -195,6 +196,20 @@ body::after {
 .sim-launch-btn:focus-visible {
   outline: 2px solid rgba(255, 255, 255, 0.58);
   outline-offset: 2px;
+}
+
+.sim-launch-btn-running {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--color-ink);
+  border-color: rgba(255, 255, 255, 0.4);
+}
+
+.sim-launch-btn-running:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.sim-launch-btn-running:active {
+  background: rgba(255, 255, 255, 0.18);
 }
 
 .sim-launch-btn-secondary {
@@ -214,6 +229,19 @@ body::after {
 
 .sim-launch-btn-secondary:active {
   background: rgba(255, 255, 255, 0.16);
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.sim-pulse-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #22c55e;
+  animation: pulse-dot 1.8s ease-in-out infinite;
 }
 
 .section-eyebrow {

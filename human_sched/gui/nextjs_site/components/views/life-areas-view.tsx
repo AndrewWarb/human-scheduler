@@ -103,19 +103,18 @@ export function LifeAreasView() {
 
   return (
     <div className="animate-[fade-in_0.25s_ease]">
-      <div className="grid items-start grid-cols-2 gap-3.5 max-[920px]:grid-cols-1">
+      <div className="grid items-start grid-cols-1 gap-3.5">
         <Card>
           <p className="section-eyebrow">Create Life Area</p>
           <LifeAreaForm onSubmit={doCreateLifeArea} />
         </Card>
+      </div>
 
-        <Card>
-          <p className="section-eyebrow">Life Areas</p>
-          <div className="grid gap-2.5">
-            {state.lifeAreas.length === 0 ? (
-              <div className="text-muted italic">No life areas yet.</div>
-            ) : (
-              state.lifeAreas.map((area) => {
+      <div className="grid items-start grid-cols-2 gap-3.5 mt-3.5 max-[920px]:grid-cols-1">
+        {state.lifeAreas.length === 0 ? (
+          <div className="text-muted italic">No life areas yet.</div>
+        ) : (
+          state.lifeAreas.map((area) => {
                 const interactivityScores = area.interactivity_scores ?? {};
                 const knownKeys = new Set(
                   INTERACTIVITY_BUCKETS.map(({ key }) => key),
@@ -234,8 +233,6 @@ export function LifeAreasView() {
                 );
               })
             )}
-          </div>
-        </Card>
       </div>
     </div>
   );

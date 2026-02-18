@@ -13,7 +13,7 @@ import { SettingsView } from "@/components/views/settings-view";
 
 function AppShell() {
   const [activeTab, setActiveTab] = useState<TabId>("dashboard");
-  const { state, sseStatus, startSimulation, resetSimulation } = useApp();
+  const { state, sseStatus, startSimulation, stopSimulation, resetSimulation } = useApp();
 
   return (
     <div className="app-shell animate-[fade-in_0.45s_ease]">
@@ -37,12 +37,13 @@ function AppShell() {
       <section className="sim-launch" aria-label="Simulation controls">
         <button
           type="button"
-          className="sim-launch-btn"
-          aria-label="Start simulation"
-          title="Start simulation"
-          onClick={() => void startSimulation()}
+          className={`sim-launch-btn${state.simulationRunning ? " sim-launch-btn-running" : ""}`}
+          aria-label={state.simulationRunning ? "Stop simulation" : "Start simulation"}
+          title={state.simulationRunning ? "Stop simulation" : "Start simulation"}
+          onClick={() => void (state.simulationRunning ? stopSimulation() : startSimulation())}
         >
-          Start Simulation
+          {state.simulationRunning && <span className="sim-pulse-dot" />}
+          {state.simulationRunning ? "Stop Simulation" : "Start Simulation"}
         </button>
         <button
           type="button"
