@@ -5,7 +5,6 @@ import { Card } from "../card";
 import { Pill } from "../pill";
 import { TaskActions } from "../task-actions";
 import { TaskForm } from "../task-form";
-import { TaskFilters } from "../task-filters";
 import type { Task } from "@/lib/types";
 
 function formatTimestamp(iso: string | null): string {
@@ -14,32 +13,28 @@ function formatTimestamp(iso: string | null): string {
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleString();
 }
 
-function TaskDetail({
+function TaskItem({
   task,
+  isActive,
   onAction,
 }: {
-  task: Task | null;
+  task: Task;
+  isActive: boolean;
   onAction: (id: number, action: "pause" | "resume" | "complete") => void;
 }) {
-  if (!task) {
-    return <div className="text-muted italic">Select a task from the list.</div>;
-  }
+  const description = task.description.trim();
 
   return (
-    <article className="surface-item">
-      <h3 className="text-[1.08rem]">{task.title}</h3>
+    <article className={`surface-item task-item-compact ${isActive ? "surface-item-active" : ""}`}>
+      <h3 className="text-[1rem]">{task.title}</h3>
       <div className="flex flex-wrap gap-1.5">
         <Pill>ID: {task.id}</Pill>
-        <Pill>{task.life_area_name}</Pill>
         <Pill>{task.urgency_label}</Pill>
         <Pill>State: {task.state}</Pill>
       </div>
-      <p className="text-muted">{task.description || "No description"}</p>
-      <p className="font-mono text-[0.84rem] text-mono-ink">
-        Created: {formatTimestamp(task.created_at)}
-      </p>
-      <p className="font-mono text-[0.84rem] text-mono-ink">
-        Due: {task.due_at ? formatTimestamp(task.due_at) : "--"}
+      {description && <p className="text-muted">{description}</p>}
+      <p className="font-mono text-[0.8rem] text-mono-ink">
+        Created: {formatTimestamp(task.created_at)} • Due: {task.due_at ? formatTimestamp(task.due_at) : "--"}
       </p>
       <TaskActions task={task} onAction={onAction} />
     </article>
@@ -47,23 +42,27 @@ function TaskDetail({
 }
 
 export function TasksView() {
-  const {
-    state,
-    doTaskAction,
-    doCreateTask,
-    refreshTasks,
-    selectTask,
-  } = useApp();
+  const { state, doTaskAction, doCreateTask } = useApp();
 
-  const selected =
-    state.tasks.find((t) => t.id === state.selectedTaskId) ??
-    state.tasks[0] ??
-    null;
+  const tasksByLifeArea = new Map<number, Task[]>();
+  for (const area of state.lifeAreas) {
+    tasksByLifeArea.set(area.id, []);
+  }
+
+  const orphanTasks: Task[] = [];
+  for (const task of state.tasks) {
+    const bucket = tasksByLifeArea.get(task.life_area_id);
+    if (bucket) {
+      bucket.push(task);
+    } else {
+      orphanTasks.push(task);
+    }
+  }
 
   return (
     <div className="animate-[fade-in_0.25s_ease]">
-      <div className="grid grid-cols-2 gap-3.5 max-[920px]:grid-cols-1">
-        <Card>
+      <div className="grid grid-cols-1 gap-3.5">
+        <Card className="tasks-create-card">
           <p className="section-eyebrow">Create Task</p>
           <TaskForm
             settings={state.settings}
@@ -71,50 +70,72 @@ export function TasksView() {
             onSubmit={doCreateTask}
           />
         </Card>
-
-        <Card>
-          <p className="section-eyebrow">Filters</p>
-          <TaskFilters
-            settings={state.settings}
-            lifeAreas={state.lifeAreas}
-            onApply={(f) => refreshTasks(f)}
-          />
-        </Card>
       </div>
 
-      <div className="grid grid-cols-2 gap-3.5 mt-3.5 max-[920px]:grid-cols-1">
-        <Card>
-          <p className="section-eyebrow">Task List</p>
-          <div className="grid gap-2.5">
-            {state.tasks.length === 0 ? (
-              <div className="text-muted italic">No tasks found.</div>
-            ) : (
-              state.tasks.map((task) => (
-                <article
-                  key={task.id}
-                  className={`surface-item surface-item-clickable ${selected?.id === task.id ? "surface-item-active" : ""}`}
-                  onClick={() => selectTask(task.id)}
-                >
-                  <h3 className="text-[1.08rem]">{task.title}</h3>
-                  <div className="flex flex-wrap gap-1.5">
-                    <Pill>{task.life_area_name}</Pill>
-                    <Pill>{task.urgency_label}</Pill>
-                    <Pill>{task.state}</Pill>
-                  </div>
-                  <p className="text-muted">
-                    {task.description || "No description"}
-                  </p>
-                  <TaskActions task={task} onAction={doTaskAction} />
-                </article>
-              ))
-            )}
-          </div>
-        </Card>
+      <div className="grid grid-cols-2 max-[1080px]:grid-cols-1 gap-3.5 mt-3.5">
+        {state.lifeAreas.length === 0 ? (
+          <Card className="tasks-area-card">
+            <p className="section-eyebrow">Tasks</p>
+            <div className="text-muted italic">
+              Create a life area first, then add tasks.
+            </div>
+          </Card>
+        ) : (
+          state.lifeAreas.map((area) => {
+            const areaTasks = tasksByLifeArea.get(area.id) ?? [];
 
-        <Card>
-          <p className="section-eyebrow">Task Detail</p>
-          <TaskDetail task={selected} onAction={doTaskAction} />
-        </Card>
+            return (
+              <Card key={area.id} className="tasks-area-card">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <p className="section-eyebrow">Life Area</p>
+                    <h3 className="text-[1.08rem]">{area.name}</h3>
+                  </div>
+                  <Pill>Tasks: {areaTasks.length}</Pill>
+                </div>
+
+                <div className="grid gap-2.5">
+                  {areaTasks.length === 0 ? (
+                    <div className="text-muted italic">
+                      No tasks in this life area.
+                    </div>
+                  ) : (
+                    areaTasks.map((task) => (
+                      <TaskItem
+                        key={task.id}
+                        task={task}
+                        isActive={state.dispatch?.task.id === task.id}
+                        onAction={doTaskAction}
+                      />
+                    ))
+                  )}
+                </div>
+              </Card>
+            );
+          })
+        )}
+
+        {orphanTasks.length > 0 && (
+          <Card className="tasks-area-card">
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <p className="section-eyebrow">Unassigned</p>
+                <h3 className="text-[1.08rem]">Orphaned Tasks</h3>
+              </div>
+              <Pill>Tasks: {orphanTasks.length}</Pill>
+            </div>
+            <div className="grid gap-2.5">
+              {orphanTasks.map((task) => (
+                <TaskItem
+                  key={task.id}
+                  task={task}
+                  isActive={state.dispatch?.task.id === task.id}
+                  onAction={doTaskAction}
+                />
+              ))}
+            </div>
+          </Card>
+        )}
       </div>
     </div>
   );

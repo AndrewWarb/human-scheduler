@@ -609,6 +609,21 @@ textarea.field-control {
   font-weight: 650;
 }
 
+.tasks-create-card,
+.tasks-area-card {
+  width: min(100%, 640px);
+  justify-self: center;
+}
+
+.task-item-compact {
+  gap: 0.42rem;
+  padding: 0.56rem 0.62rem;
+}
+
+.task-item-compact .btn {
+  padding: 0.38rem 0.72rem;
+}
+
 .kv-grid {
   display: grid;
   grid-template-columns: max-content 1fr;
