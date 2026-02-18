@@ -23,7 +23,6 @@ export interface Task {
 export interface LifeArea {
   id: number;
   name: string;
-  description: string;
   task_count: number;
   interactivity_scores: Record<string, number>;
 }

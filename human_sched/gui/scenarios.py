@@ -17,7 +17,6 @@ class ScenarioTask:
 @dataclass(frozen=True, slots=True)
 class ScenarioLifeArea:
     name: str
-    description: str
     tasks: tuple[ScenarioTask, ...]
 
 
@@ -30,7 +29,7 @@ class ScenarioDefinition:
 
 
 class ScenarioFacade(Protocol):
-    def create_life_area(self, *, name: str, description: str = "") -> dict:
+    def create_life_area(self, *, name: str) -> dict:
         ...
 
     def create_task(
@@ -62,7 +61,6 @@ _SCENARIOS: dict[str, ScenarioDefinition] = {
         life_areas=(
             ScenarioLifeArea(
                 name="Work",
-                description="Primary professional commitments.",
                 tasks=(
                     ScenarioTask("Ship payroll export fix", "critical", "Deadline today."),
                     ScenarioTask("Write onboarding guide", "important"),
@@ -71,7 +69,6 @@ _SCENARIOS: dict[str, ScenarioDefinition] = {
             ),
             ScenarioLifeArea(
                 name="Health",
-                description="Physical and mental maintenance.",
                 tasks=(
                     ScenarioTask("40-minute run", "normal"),
                     ScenarioTask("Schedule annual checkup", "maintenance"),
@@ -79,7 +76,6 @@ _SCENARIOS: dict[str, ScenarioDefinition] = {
             ),
             ScenarioLifeArea(
                 name="Home",
-                description="Household operations.",
                 tasks=(
                     ScenarioTask("Pay electricity bill", "important"),
                     ScenarioTask("Declutter office shelf", "maintenance"),
@@ -94,7 +90,6 @@ _SCENARIOS: dict[str, ScenarioDefinition] = {
         life_areas=(
             ScenarioLifeArea(
                 name="University",
-                description="Coursework and exam prep.",
                 tasks=(
                     ScenarioTask("Finalize algorithms cheat sheet", "critical"),
                     ScenarioTask("Practice distributed systems mock exam", "active_focus"),
@@ -103,7 +98,6 @@ _SCENARIOS: dict[str, ScenarioDefinition] = {
             ),
             ScenarioLifeArea(
                 name="Admin",
-                description="Required but lower urgency obligations.",
                 tasks=(
                     ScenarioTask("Submit reimbursement form", "normal"),
                     ScenarioTask("Archive old receipts", "someday"),
@@ -118,7 +112,6 @@ _SCENARIOS: dict[str, ScenarioDefinition] = {
         life_areas=(
             ScenarioLifeArea(
                 name="Household",
-                description="Shared home responsibilities.",
                 tasks=(
                     ScenarioTask("Book plumber for leak", "critical"),
                     ScenarioTask("Weekly grocery run", "normal"),
@@ -127,7 +120,6 @@ _SCENARIOS: dict[str, ScenarioDefinition] = {
             ),
             ScenarioLifeArea(
                 name="Finance",
-                description="Budgeting and admin.",
                 tasks=(
                     ScenarioTask("Reconcile credit card charges", "important"),
                     ScenarioTask("Research new savings account", "someday"),
@@ -135,7 +127,6 @@ _SCENARIOS: dict[str, ScenarioDefinition] = {
             ),
             ScenarioLifeArea(
                 name="Hobbies",
-                description="Longer-term personal growth.",
                 tasks=(
                     ScenarioTask("Practice guitar scales", "maintenance"),
                     ScenarioTask("Sketch weekend trip ideas", "someday"),
@@ -172,7 +163,7 @@ def apply_seed_scenario(facade: ScenarioFacade, scenario_name: str) -> str:
         return key
 
     for area in scenario.life_areas:
-        area_dto = facade.create_life_area(name=area.name, description=area.description)
+        area_dto = facade.create_life_area(name=area.name)
         area_id = int(area_dto["id"])
 
         for task in area.tasks:

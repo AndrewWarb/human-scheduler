@@ -48,11 +48,11 @@ class SchedulerGuiFacade:
     # ------------------------------------------------------------------
     # Commands
     # ------------------------------------------------------------------
-    def create_life_area(self, *, name: str, description: str = "") -> dict[str, Any]:
+    def create_life_area(self, *, name: str) -> dict[str, Any]:
         def _create() -> dict[str, Any]:
             if not name.strip():
                 raise ValueError("Life area name is required")
-            area = self._scheduler.create_life_area(name=name, description=description)
+            area = self._scheduler.create_life_area(name=name)
             self.publish_info(f"Life area '{area.name}' is ready.")
             return self._serialize_life_area(area)
 
@@ -344,7 +344,6 @@ class SchedulerGuiFacade:
         return {
             "id": life_area.life_area_id,
             "name": life_area.name,
-            "description": life_area.description,
             "task_count": len(life_area.task_ids),
             "interactivity_scores": life_area.interactivity_scores(),
         }

@@ -14,7 +14,6 @@ class LifeArea:
 
     name: str
     thread_group: ThreadGroup
-    description: str = ""
     task_ids: set[int] = field(default_factory=set)
 
     @property

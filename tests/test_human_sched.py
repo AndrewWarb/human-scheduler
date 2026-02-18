@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 from human_sched.adapters.time_scale import TimeScaleAdapter, TimeScaleConfig, load_time_scale_config
 from human_sched.application.runtime import HumanTaskScheduler
@@ -198,7 +200,7 @@ class HumanSchedulerTests(unittest.TestCase):
                 persistence_dir=temp_dir,
             )
             try:
-                area = scheduler_a.create_life_area("Work", description="Career lane")
+                area = scheduler_a.create_life_area("Work")
                 scheduler_a.rename_life_area(area.life_area_id, name="Deep Work")
                 scheduler_a.create_task(
                     life_area="Deep Work",
@@ -227,6 +229,37 @@ class HumanSchedulerTests(unittest.TestCase):
                 self.assertEqual(tasks[0].state, ThreadState.WAITING)
             finally:
                 scheduler_b.close()
+
+    def test_persistence_loads_legacy_life_area_description_field(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            life_areas_path = Path(temp_dir) / "life_areas.json"
+            tasks_path = Path(temp_dir) / "tasks.json"
+            life_areas_path.write_text(
+                json.dumps(
+                    [
+                        {
+                            "id": 1,
+                            "name": "Work",
+                            "description": "legacy metadata",
+                        }
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            tasks_path.write_text("[]", encoding="utf-8")
+
+            scheduler = HumanTaskScheduler(
+                notifier=FakeNotifier(),
+                time_scale=self.time_scale,
+                enable_timers=False,
+                persistence_dir=temp_dir,
+            )
+            try:
+                areas = scheduler.list_life_areas()
+                self.assertEqual(len(areas), 1)
+                self.assertEqual(areas[0].name, "Work")
+            finally:
+                scheduler.close()
 
     def test_lazy_catchup_auto_pauses_after_missed_quantum(self) -> None:
         area = self.scheduler.create_life_area("Health")

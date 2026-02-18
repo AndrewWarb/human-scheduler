@@ -127,7 +127,7 @@ class HumanTaskScheduler:
     # ------------------------------------------------------------------
     # CRUD-style API
     # ------------------------------------------------------------------
-    def create_life_area(self, name: str, description: str = "") -> LifeArea:
+    def create_life_area(self, name: str) -> LifeArea:
         with self._lock:
             key = self._normalize_name(name)
             if key in self._life_areas_by_name:
@@ -135,7 +135,7 @@ class HumanTaskScheduler:
 
             tg = ThreadGroup(name)
             SchedClutch(tg, num_clusters=1)
-            life_area = LifeArea(name=name, description=description, thread_group=tg)
+            life_area = LifeArea(name=name, thread_group=tg)
 
             self.life_areas_by_id[life_area.life_area_id] = life_area
             self._life_areas_by_name[key] = life_area
@@ -750,7 +750,6 @@ class HumanTaskScheduler:
                 {
                     "id": area.life_area_id,
                     "name": area.name,
-                    "description": area.description,
                 }
             )
 
@@ -793,8 +792,8 @@ class HumanTaskScheduler:
                 name = str(row.get("name", "")).strip()
                 if not name:
                     continue
-                description = str(row.get("description", ""))
-                area = self.create_life_area(name=name, description=description)
+                # Legacy files may still include "description"; it is ignored.
+                area = self.create_life_area(name=name)
                 saved_id = row.get("id")
                 if isinstance(saved_id, int):
                     id_to_name[saved_id] = area.name

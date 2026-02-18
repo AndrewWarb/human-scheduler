@@ -12,5 +12,5 @@ class CreateLifeArea:
     def __init__(self, scheduler: HumanTaskScheduler) -> None:
         self._scheduler = scheduler
 
-    def execute(self, name: str, description: str = "") -> LifeArea:
-        return self._scheduler.create_life_area(name=name, description=description)
+    def execute(self, name: str) -> LifeArea:
+        return self._scheduler.create_life_area(name=name)

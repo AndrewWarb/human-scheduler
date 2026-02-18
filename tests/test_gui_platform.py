@@ -109,6 +109,14 @@ class GuiPlatformTests(unittest.TestCase):
         self.assertEqual(len(all_areas), 1)
         self.assertEqual(all_areas[0]["name"], "Health")
 
+    def test_facade_life_area_payload_omits_description(self) -> None:
+        area = self.facade.create_life_area(name="Focus")
+
+        self.assertNotIn("description", area)
+        all_areas = self.facade.list_life_areas()
+        self.assertEqual(len(all_areas), 1)
+        self.assertNotIn("description", all_areas[0])
+
     def test_gui_host_uses_persisted_data_before_seed_scenario(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             config = GuiConfig(

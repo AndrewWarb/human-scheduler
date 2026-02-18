@@ -216,7 +216,6 @@ def build_request_handler(service: SchedulerHttpService) -> type[BaseHTTPRequest
                     body = self._read_json_body()
                     payload = service.facade.create_life_area(
                         name=str(body.get("name", "")),
-                        description=str(body.get("description", "")),
                     )
                     self._write_json(payload, status=201)
                     return
