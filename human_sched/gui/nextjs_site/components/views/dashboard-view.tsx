@@ -11,13 +11,13 @@ export function DashboardView() {
 
   function handlePauseCurrent() {
     const taskId = dispatch?.task?.id;
-    if (!taskId) return;
+    if (taskId == null) return;
     doTaskAction(taskId, "pause");
   }
 
   function handleCompleteCurrent() {
     const taskId = dispatch?.task?.id;
-    if (!taskId) return;
+    if (taskId == null) return;
     doTaskAction(taskId, "complete");
   }
 
@@ -48,12 +48,14 @@ export function DashboardView() {
               onClick={handlePauseCurrent}
             >
               Pause
+              <span className="block text-[0.65rem] opacity-60">thread_block</span>
             </button>
             <button
               className="btn btn-ghost"
               onClick={handleCompleteCurrent}
             >
               Complete
+              <span className="block text-[0.65rem] opacity-60">thread_terminate</span>
             </button>
           </div>
           <p className="text-muted">

@@ -11,6 +11,12 @@ interface TaskActionsProps {
 }
 
 export function TaskActions({ task, onAction }: TaskActionsProps) {
+  const XNU_ACTION_LABELS: Record<string, string> = {
+    pause: "thread_block",
+    resume: "thread_wakeup",
+    complete: "thread_terminate",
+  };
+
   const actions: {
     label: string;
     action: "pause" | "resume" | "complete";
@@ -44,6 +50,7 @@ export function TaskActions({ task, onAction }: TaskActionsProps) {
           }}
         >
           {label}
+          <span className="block text-[0.65rem] opacity-60">{XNU_ACTION_LABELS[action]}</span>
         </button>
       ))}
     </div>
