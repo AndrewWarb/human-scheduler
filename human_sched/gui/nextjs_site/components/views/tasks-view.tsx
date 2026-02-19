@@ -7,7 +7,7 @@ import { Pill } from "../pill";
 import { TaskActions } from "../task-actions";
 import { TaskForm } from "../task-form";
 import { XNU_URGENCY_LABELS } from "@/lib/types";
-import type { Task } from "@/lib/types";
+import type { AppSettings, LifeArea, Task } from "@/lib/types";
 
 function formatTimestamp(iso: string | null): string {
   if (!iso) return "--";
@@ -169,6 +169,62 @@ function TaskItem({
   );
 }
 
+function InlineAddTask({
+  settings,
+  lifeAreas,
+  lifeAreaId,
+  onSubmit,
+}: {
+  settings: AppSettings | null;
+  lifeAreas: LifeArea[];
+  lifeAreaId: number;
+  onSubmit: (body: {
+    title: string;
+    life_area_id: number;
+    urgency_tier: string;
+    active_window_start_local?: string | null;
+    active_window_end_local?: string | null;
+  }) => Promise<void>;
+}) {
+  const [open, setOpen] = useState(false);
+
+  async function handleSubmit(body: Parameters<typeof onSubmit>[0]) {
+    await onSubmit(body);
+    setOpen(false);
+  }
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        className="btn btn-ghost w-full"
+        onClick={() => setOpen(true)}
+      >
+        + Add Task
+      </button>
+    );
+  }
+
+  return (
+    <div className="border-t border-surface-border pt-2.5 mt-1">
+      <TaskForm
+        settings={settings}
+        lifeAreas={lifeAreas}
+        onSubmit={handleSubmit}
+        fixedLifeAreaId={lifeAreaId}
+        compact
+      />
+      <button
+        type="button"
+        className="btn btn-ghost w-full mt-1.5"
+        onClick={() => setOpen(false)}
+      >
+        Cancel
+      </button>
+    </div>
+  );
+}
+
 export function TasksView() {
   const { state, doTaskAction, doCreateTask, doUpdateTaskWindow } = useApp();
 
@@ -229,16 +285,12 @@ export function TasksView() {
                   )}
                 </div>
 
-                <div className="border-t border-surface-border pt-2.5 mt-1">
-                  <p className="section-eyebrow mb-1.5">Add Task</p>
-                  <TaskForm
-                    settings={state.settings}
-                    lifeAreas={state.lifeAreas}
-                    onSubmit={doCreateTask}
-                    fixedLifeAreaId={area.id}
-                    compact
-                  />
-                </div>
+                <InlineAddTask
+                  settings={state.settings}
+                  lifeAreas={state.lifeAreas}
+                  lifeAreaId={area.id}
+                  onSubmit={doCreateTask}
+                />
               </Card>
             );
           })

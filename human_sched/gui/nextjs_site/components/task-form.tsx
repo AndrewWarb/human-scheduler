@@ -66,7 +66,7 @@ export function TaskForm({ settings, lifeAreas, onSubmit, fixedLifeAreaId, compa
           className="field-control"
         />
       </label>
-      {!fixedLifeAreaId && (
+      {fixedLifeAreaId === undefined && (
         <label className="field-label">
           Life Area
           <select
