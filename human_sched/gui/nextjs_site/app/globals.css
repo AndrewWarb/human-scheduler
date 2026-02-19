@@ -267,6 +267,10 @@ body::after {
     border-color 0.25s ease;
 }
 
+.glass-card .btn {
+  border-radius: 12px;
+}
+
 .glass-card:hover {
   box-shadow: 0 28px 44px rgba(0, 0, 0, 0.5);
   border-color: rgba(255, 255, 255, 0.2);
@@ -668,6 +672,7 @@ textarea.field-control {
 
 .task-item-compact .btn {
   padding: 0.38rem 0.72rem;
+  border-radius: 10px;
 }
 
 .kv-grid {

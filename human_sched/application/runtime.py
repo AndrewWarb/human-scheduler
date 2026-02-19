@@ -1100,6 +1100,8 @@ class HumanTaskScheduler:
     def list_tasks(self) -> list[Task]:
         """Return all tasks as a snapshot list."""
         with self._lock:
+            now_us = self._now_us()
+            self._apply_lazy_catchup(now_us)
             return list(self.tasks_by_id.values())
 
     def get_task(self, task_id: int) -> Task | None:

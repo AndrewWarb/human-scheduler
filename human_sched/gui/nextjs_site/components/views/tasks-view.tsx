@@ -200,7 +200,7 @@ export function TasksView() {
         </Card>
       </div>
 
-      <div className="grid grid-cols-2 max-[1080px]:grid-cols-1 gap-3.5 mt-3.5">
+      <div className="grid grid-cols-2 max-[1080px]:grid-cols-1 gap-3.5 mt-3.5 items-start">
         {state.lifeAreas.length === 0 ? (
           <Card className="tasks-area-card">
             <p className="section-eyebrow">Tasks</p>
