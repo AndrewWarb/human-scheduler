@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useApp } from "@/lib/app-context";
 import { Card } from "../card";
 import { Pill } from "../pill";
@@ -18,11 +19,67 @@ function TaskItem({
   task,
   isActive,
   onAction,
+  onUpdateWindow,
 }: {
   task: Task;
   isActive: boolean;
-  onAction: (id: number, action: "pause" | "resume" | "complete") => void;
+  onAction: (id: number, action: "pause" | "resume" | "complete" | "delete") => void;
+  onUpdateWindow: (
+    taskId: number,
+    body: {
+      active_window_start_local?: string | null;
+      active_window_end_local?: string | null;
+    },
+  ) => Promise<void>;
 }) {
+  const [windowStart, setWindowStart] = useState(task.active_window_start_local ?? "");
+  const [windowEnd, setWindowEnd] = useState(task.active_window_end_local ?? "");
+  const [windowError, setWindowError] = useState("");
+  const [windowPending, setWindowPending] = useState(false);
+
+  useEffect(() => {
+    setWindowStart(task.active_window_start_local ?? "");
+    setWindowEnd(task.active_window_end_local ?? "");
+    setWindowError("");
+  }, [task.id, task.active_window_start_local, task.active_window_end_local]);
+
+  async function saveWindow() {
+    if ((windowStart && !windowEnd) || (!windowStart && windowEnd)) {
+      setWindowError("Set both start and end, or leave both empty.");
+      return;
+    }
+
+    setWindowPending(true);
+    setWindowError("");
+    try {
+      await onUpdateWindow(task.id, {
+        active_window_start_local: windowStart || null,
+        active_window_end_local: windowEnd || null,
+      });
+    } catch (err) {
+      setWindowError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setWindowPending(false);
+    }
+  }
+
+  async function clearWindow() {
+    setWindowPending(true);
+    setWindowError("");
+    try {
+      await onUpdateWindow(task.id, {
+        active_window_start_local: null,
+        active_window_end_local: null,
+      });
+      setWindowStart("");
+      setWindowEnd("");
+    } catch (err) {
+      setWindowError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setWindowPending(false);
+    }
+  }
+
   return (
     <article className={`surface-item task-item-compact ${isActive ? "surface-item-active" : ""}`}>
       <div className="flex items-start justify-between gap-2">
@@ -49,17 +106,71 @@ function TaskItem({
             : ""}
         </Pill>
         <Pill>State: {task.state}</Pill>
+        {task.active_window_start_local && task.active_window_end_local && (
+          <Pill>
+            Window: {task.active_window_start_local}-{task.active_window_end_local}
+          </Pill>
+        )}
       </div>
       <p className="font-mono text-[0.8rem] text-mono-ink">
         Created: {formatTimestamp(task.created_at)}
       </p>
+      {task.urgency_tier === "critical" && (
+        <div className="grid gap-1">
+          <p className="text-[0.72rem] uppercase tracking-[0.12em] text-muted">
+            FIXPRI active window
+          </p>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <input
+              type="time"
+              className="field-control max-w-[8rem] py-[0.32rem] px-[0.45rem] text-[0.8rem]"
+              value={windowStart}
+              onChange={(e) => setWindowStart(e.target.value)}
+              disabled={windowPending}
+              aria-label={`Window start for ${task.title}`}
+            />
+            <span className="text-muted">to</span>
+            <input
+              type="time"
+              className="field-control max-w-[8rem] py-[0.32rem] px-[0.45rem] text-[0.8rem]"
+              value={windowEnd}
+              onChange={(e) => setWindowEnd(e.target.value)}
+              disabled={windowPending}
+              aria-label={`Window end for ${task.title}`}
+            />
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={() => {
+                void saveWindow();
+              }}
+              disabled={windowPending}
+            >
+              Save
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={() => {
+                void clearWindow();
+              }}
+              disabled={windowPending}
+            >
+              Clear
+            </button>
+          </div>
+          {windowError && (
+            <p className="min-h-[1.1em] text-[0.78rem] text-warning">{windowError}</p>
+          )}
+        </div>
+      )}
       <TaskActions task={task} onAction={onAction} />
     </article>
   );
 }
 
 export function TasksView() {
-  const { state, doTaskAction, doCreateTask } = useApp();
+  const { state, doTaskAction, doCreateTask, doUpdateTaskWindow } = useApp();
 
   const tasksByLifeArea = new Map<number, Task[]>();
   for (const area of state.lifeAreas) {
@@ -123,6 +234,7 @@ export function TasksView() {
                         task={task}
                         isActive={state.dispatch?.task.id === task.id}
                         onAction={doTaskAction}
+                        onUpdateWindow={doUpdateTaskWindow}
                       />
                     ))
                   )}
@@ -148,6 +260,7 @@ export function TasksView() {
                   task={task}
                   isActive={state.dispatch?.task.id === task.id}
                   onAction={doTaskAction}
+                  onUpdateWindow={doUpdateTaskWindow}
                 />
               ))}
             </div>

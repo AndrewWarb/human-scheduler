@@ -28,6 +28,7 @@ import {
   whatNext as apiWhatNext,
   resetSimulation as apiResetSimulation,
   taskAction as apiTaskAction,
+  updateTaskWindow as apiUpdateTaskWindow,
   createTask as apiCreateTask,
   createLifeArea as apiCreateLifeArea,
   deleteLifeArea as apiDeleteLifeArea,
@@ -121,10 +122,19 @@ interface AppContextValue {
     taskId: number,
     action: "pause" | "resume" | "complete" | "delete",
   ) => Promise<void>;
+  doUpdateTaskWindow: (
+    taskId: number,
+    body: {
+      active_window_start_local?: string | null;
+      active_window_end_local?: string | null;
+    },
+  ) => Promise<void>;
   doCreateTask: (body: {
     title: string;
     life_area_id: number;
     urgency_tier: string;
+    active_window_start_local?: string | null;
+    active_window_end_local?: string | null;
   }) => Promise<void>;
   doCreateLifeArea: (body: {
     name: string;
@@ -276,11 +286,43 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [showToast],
   );
 
+  const doUpdateTaskWindow = useCallback(
+    async (
+      taskId: number,
+      body: {
+        active_window_start_local?: string | null;
+        active_window_end_local?: string | null;
+      },
+    ) => {
+      try {
+        await apiUpdateTaskWindow(taskId, body);
+        showToast("Task window updated.");
+
+        const [tasksRes, dispatchRes, diag] = await Promise.all([
+          fetchTasks().catch(() => null),
+          fetchDispatch().catch(() => null),
+          fetchDiagnostics().catch(() => null),
+        ]);
+        if (tasksRes)
+          dispatch({ type: "SET_TASKS", payload: tasksRes.items ?? [] });
+        if (dispatchRes)
+          dispatch({ type: "SET_DISPATCH", payload: dispatchRes.dispatch });
+        if (diag) dispatch({ type: "SET_DIAGNOSTICS", payload: diag });
+      } catch (e) {
+        showToast(e instanceof Error ? e.message : String(e));
+        throw e;
+      }
+    },
+    [showToast],
+  );
+
   const doCreateTask = useCallback(
     async (body: {
       title: string;
       life_area_id: number;
       urgency_tier: string;
+      active_window_start_local?: string | null;
+      active_window_end_local?: string | null;
     }) => {
       await apiCreateTask(body);
       showToast("Task created.");
@@ -401,6 +443,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     stopSimulation,
     resetSimulation,
     doTaskAction,
+    doUpdateTaskWindow,
     doCreateTask,
     doCreateLifeArea,
     doDeleteLifeArea,

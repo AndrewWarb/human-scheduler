@@ -545,6 +545,14 @@ textarea.field-control {
   max-width: 72ch;
 }
 
+.current-run-reason {
+  margin-top: 0.36rem !important;
+  color: rgba(243, 244, 246, 0.9);
+  max-width: 84ch;
+  font-size: 0.82rem;
+  font-family: var(--font-mono);
+}
+
 .ui-pill {
   border-radius: 999px;
   border: 1px solid;

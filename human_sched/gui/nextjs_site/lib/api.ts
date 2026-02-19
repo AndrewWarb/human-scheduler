@@ -121,6 +121,8 @@ export async function createTask(body: {
   title: string;
   life_area_id: number;
   urgency_tier: string;
+  active_window_start_local?: string | null;
+  active_window_end_local?: string | null;
 }): Promise<Task> {
   return apiPost("/api/tasks", body);
 }
@@ -141,4 +143,14 @@ export async function taskAction(
   action: "pause" | "resume" | "complete" | "delete",
 ): Promise<unknown> {
   return apiPost(`/api/tasks/${taskId}/${action}`, {});
+}
+
+export async function updateTaskWindow(
+  taskId: number,
+  body: {
+    active_window_start_local?: string | null;
+    active_window_end_local?: string | null;
+  },
+): Promise<Task> {
+  return apiPost(`/api/tasks/${taskId}/window`, body);
 }

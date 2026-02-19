@@ -178,6 +178,8 @@ class HumanTaskScheduler:
         title: str,
         *,
         urgency_tier: UrgencyTier | str = UrgencyTier.NORMAL,
+        active_window_start_local: str | None = None,
+        active_window_end_local: str | None = None,
         notes: str = "",
         start_runnable: bool = True,
     ) -> Task:
@@ -187,6 +189,11 @@ class HumanTaskScheduler:
 
             area = self._resolve_life_area(life_area)
             urgency = UrgencyTier.from_value(urgency_tier)
+            start_minute, end_minute = self._parse_and_validate_active_window(
+                urgency=urgency,
+                active_window_start_local=active_window_start_local,
+                active_window_end_local=active_window_end_local,
+            )
 
             thread = Thread(
                 thread_group=area.thread_group,
@@ -200,6 +207,8 @@ class HumanTaskScheduler:
                 life_area=area,
                 urgency_tier=urgency,
                 thread=thread,
+                active_window_start_minute=start_minute,
+                active_window_end_minute=end_minute,
                 notes=notes,
             )
 
@@ -219,6 +228,33 @@ class HumanTaskScheduler:
                     trigger_when_idle=False,
                 )
 
+            # Keep auto-managed FIXPRI window tasks aligned to wall-clock windows.
+            self._enforce_task_windows_unlocked(now_us)
+            self._persist_state_unlocked()
+            return task
+
+    def set_task_active_window(
+        self,
+        task_id: int,
+        *,
+        active_window_start_local: str | None = None,
+        active_window_end_local: str | None = None,
+    ) -> Task:
+        with self._lock:
+            now_us = self._now_us()
+            self._apply_lazy_catchup(now_us)
+
+            task = self._require_task(task_id)
+            start_minute, end_minute = self._parse_and_validate_active_window(
+                urgency=task.urgency_tier,
+                active_window_start_local=active_window_start_local,
+                active_window_end_local=active_window_end_local,
+            )
+
+            task.active_window_start_minute = start_minute
+            task.active_window_end_minute = end_minute
+
+            self._enforce_task_windows_unlocked(now_us)
             self._persist_state_unlocked()
             return task
 
@@ -483,6 +519,7 @@ class HumanTaskScheduler:
 
     def _apply_lazy_catchup(self, now_us: int) -> None:
         self._apply_tick_catchup(now_us)
+        self._enforce_task_windows_unlocked(now_us)
 
         active = self.processor.active_thread
         if active is None:
@@ -779,6 +816,7 @@ class HumanTaskScheduler:
 
             self.scheduler.sched_tick(expected_tick_us)
             self._last_tick_us = expected_tick_us
+            self._enforce_task_windows_unlocked(now_us)
             self._arm_tick_timer()
 
     def _cancel_quantum_artifacts(self, *, reset_quantum_end: bool) -> None:
@@ -801,6 +839,73 @@ class HumanTaskScheduler:
         if self._tick_notification_id is not None:
             self.notifier.cancel_notification(self._tick_notification_id)
             self._tick_notification_id = None
+
+    def _enforce_task_windows_unlocked(self, now_us: int) -> None:
+        """Auto-manage FIXPRI tasks that declare a wall-clock active window."""
+        now_local_minute = self._current_local_minute_of_day_unlocked()
+        changed = False
+
+        for task in self.tasks_by_id.values():
+            window_bounds = self._task_active_window_bounds(task)
+            if window_bounds is None:
+                continue
+
+            start_minute, end_minute = window_bounds
+            window_active = self._is_in_active_window(
+                now_local_minute,
+                start_minute,
+                end_minute,
+            )
+
+            thread = task.thread
+            if thread.state == ThreadState.TERMINATED:
+                continue
+
+            if window_active:
+                if thread.state == ThreadState.WAITING:
+                    preempt_proc = self.scheduler.thread_wakeup(thread, now_us)
+                    self._handle_preemption_request(
+                        preempt_proc,
+                        now_us,
+                        trigger_when_idle=True,
+                    )
+                    changed = True
+                elif thread.state == ThreadState.RUNNABLE and self.processor.active_thread is None:
+                    previous = self.processor.active_thread
+                    window_label = (
+                        f"{self._format_clock_time(start_minute)}-"
+                        f"{self._format_clock_time(end_minute)}"
+                    )
+                    self._try_dispatch_idle(
+                        self.processor,
+                        now_us,
+                        reason=(
+                            "FIXPRI (TH_BUCKET_FIXPRI) task became eligible; "
+                            f"active window now overlaps ({window_label})"
+                        ),
+                    )
+                    changed = changed or self.processor.active_thread is not previous
+                continue
+
+            if thread.state == ThreadState.RUNNING:
+                new_thread = self.scheduler.thread_block(thread, self.processor, now_us)
+                if new_thread is not None:
+                    self._arm_quantum_for_active(now_us)
+                else:
+                    self._cancel_quantum_artifacts(reset_quantum_end=True)
+                changed = True
+            elif thread.state == ThreadState.RUNNABLE:
+                self.scheduler.thread_remove(thread, now_us)
+                thread.state = ThreadState.WAITING
+                thread.last_run_time = now_us
+                changed = True
+
+        if changed:
+            self._persist_state_unlocked()
+
+    def _current_local_minute_of_day_unlocked(self) -> int:
+        now_local = self.time_scale.now_wallclock().astimezone()
+        return (now_local.hour * 60) + now_local.minute
 
     def _persist_state_unlocked(self) -> None:
         if self._persistence_dir is None or self._suspend_persistence:
@@ -830,6 +935,16 @@ class HumanTaskScheduler:
                     "life_area_id": task.life_area.life_area_id,
                     "life_area_name": task.life_area.name,
                     "urgency_tier": task.urgency_tier.value,
+                    "active_window_start_local": (
+                        self._format_clock_time(task.active_window_start_minute)
+                        if task.active_window_start_minute is not None
+                        else None
+                    ),
+                    "active_window_end_local": (
+                        self._format_clock_time(task.active_window_end_minute)
+                        if task.active_window_end_minute is not None
+                        else None
+                    ),
                     "notes": task.notes,
                     "created_at": task.created_at.isoformat(),
                     "state": task.state.name.lower(),
@@ -885,15 +1000,33 @@ class HumanTaskScheduler:
                     continue
 
                 urgency_tier = str(row.get("urgency_tier", UrgencyTier.NORMAL.value))
+                active_window_start_local = self._optional_string(
+                    row.get("active_window_start_local"),
+                )
+                active_window_end_local = self._optional_string(
+                    row.get("active_window_end_local"),
+                )
                 notes = str(row.get("notes", ""))
 
-                task = self.create_task(
-                    life_area=life_area_name,
-                    title=title,
-                    urgency_tier=urgency_tier,
-                    notes=notes,
-                    start_runnable=False,
-                )
+                try:
+                    task = self.create_task(
+                        life_area=life_area_name,
+                        title=title,
+                        urgency_tier=urgency_tier,
+                        active_window_start_local=active_window_start_local,
+                        active_window_end_local=active_window_end_local,
+                        notes=notes,
+                        start_runnable=False,
+                    )
+                except ValueError:
+                    # Be tolerant of legacy/invalid saved window values.
+                    task = self.create_task(
+                        life_area=life_area_name,
+                        title=title,
+                        urgency_tier=urgency_tier,
+                        notes=notes,
+                        start_runnable=False,
+                    )
 
                 created_at = self._parse_iso_datetime(row.get("created_at"))
                 if created_at is not None:
@@ -948,6 +1081,13 @@ class HumanTaskScheduler:
         if parsed.tzinfo is None:
             parsed = parsed.replace(tzinfo=timezone.utc)
         return parsed
+
+    @staticmethod
+    def _optional_string(value: object) -> str | None:
+        if not isinstance(value, str):
+            return None
+        text = value.strip()
+        return text or None
 
     # ------------------------------------------------------------------
     # Lookup / formatting helpers
@@ -1068,3 +1208,77 @@ class HumanTaskScheduler:
     def _thread_name_from_title(title: str) -> str:
         stem = "-".join(title.strip().split())
         return stem.lower()[:48] or "task"
+
+    @staticmethod
+    def _parse_clock_time_to_minute(value: str | None) -> int | None:
+        if value is None:
+            return None
+
+        text = value.strip()
+        if not text:
+            return None
+
+        parts = text.split(":")
+        if len(parts) != 2:
+            raise ValueError("Clock times must use HH:MM format.")
+
+        hour_text, minute_text = parts
+        if not hour_text.isdigit() or not minute_text.isdigit():
+            raise ValueError("Clock times must use HH:MM format.")
+
+        hour = int(hour_text)
+        minute = int(minute_text)
+        if hour < 0 or hour > 23 or minute < 0 or minute > 59:
+            raise ValueError("Clock times must be within 00:00..23:59.")
+
+        return (hour * 60) + minute
+
+    def _parse_and_validate_active_window(
+        self,
+        *,
+        urgency: UrgencyTier,
+        active_window_start_local: str | None,
+        active_window_end_local: str | None,
+    ) -> tuple[int | None, int | None]:
+        start_minute = self._parse_clock_time_to_minute(active_window_start_local)
+        end_minute = self._parse_clock_time_to_minute(active_window_end_local)
+
+        if (start_minute is None) != (end_minute is None):
+            raise ValueError(
+                "Set both active window start and end times (or leave both blank).",
+            )
+        if start_minute is not None and end_minute is not None:
+            if start_minute == end_minute:
+                raise ValueError("Active window start and end times must differ.")
+            if urgency != UrgencyTier.CRITICAL:
+                raise ValueError(
+                    "Active window times are only supported for Critical (FIXPRI) tasks.",
+                )
+
+        return start_minute, end_minute
+
+    @staticmethod
+    def _format_clock_time(minute_of_day: int) -> str:
+        hour = (minute_of_day // 60) % 24
+        minute = minute_of_day % 60
+        return f"{hour:02d}:{minute:02d}"
+
+    @staticmethod
+    def _is_in_active_window(
+        current_minute: int,
+        start_minute: int,
+        end_minute: int,
+    ) -> bool:
+        if start_minute < end_minute:
+            return start_minute <= current_minute < end_minute
+        return current_minute >= start_minute or current_minute < end_minute
+
+    @staticmethod
+    def _task_active_window_bounds(task: Task) -> tuple[int, int] | None:
+        if task.urgency_tier != UrgencyTier.CRITICAL:
+            return None
+        start = task.active_window_start_minute
+        end = task.active_window_end_minute
+        if start is None or end is None:
+            return None
+        return (start, end)

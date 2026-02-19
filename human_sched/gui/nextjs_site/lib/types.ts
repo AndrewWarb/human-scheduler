@@ -25,6 +25,8 @@ export interface Task {
   urgency_tier: UrgencyTier;
   urgency_label: string;
   state: string;
+  active_window_start_local: string | null;
+  active_window_end_local: string | null;
   notes: string;
   created_at: string;
 }

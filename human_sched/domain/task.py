@@ -19,6 +19,8 @@ class Task:
     life_area: LifeArea
     urgency_tier: UrgencyTier
     thread: Thread
+    active_window_start_minute: int | None = None
+    active_window_end_minute: int | None = None
     notes: str = ""
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 

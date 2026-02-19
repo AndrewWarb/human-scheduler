@@ -137,6 +137,30 @@ class GuiPlatformTests(unittest.TestCase):
         self.assertEqual(deleted["id"], task["id"])
         self.assertEqual(len(self.facade.list_tasks()), 0)
 
+    def test_facade_can_update_task_active_window(self) -> None:
+        area = self.facade.create_life_area(name="Health")
+        task = self.facade.create_task(
+            life_area_id=int(area["id"]),
+            title="Sleep",
+            urgency_tier="critical",
+        )
+
+        updated = self.facade.set_task_active_window(
+            task_id=int(task["id"]),
+            active_window_start_local="21:00",
+            active_window_end_local="04:00",
+        )
+        self.assertEqual(updated["active_window_start_local"], "21:00")
+        self.assertEqual(updated["active_window_end_local"], "04:00")
+
+        cleared = self.facade.set_task_active_window(
+            task_id=int(task["id"]),
+            active_window_start_local=None,
+            active_window_end_local=None,
+        )
+        self.assertIsNone(cleared["active_window_start_local"])
+        self.assertIsNone(cleared["active_window_end_local"])
+
     def test_facade_life_area_payload_omits_description(self) -> None:
         area = self.facade.create_life_area(name="Focus")
 

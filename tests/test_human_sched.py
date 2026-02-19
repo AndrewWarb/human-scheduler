@@ -190,6 +190,117 @@ class HumanSchedulerTests(unittest.TestCase):
         self.assertEqual(len(self.scheduler.list_tasks()), 1)
         self.assertEqual(self.scheduler.list_tasks()[0].task_id, second.task_id)
 
+    def test_fixpri_sleep_task_auto_runs_only_during_sleep_window(self) -> None:
+        # Outside the configured window (21:00-04:00), task should stay blocked.
+        self.clock.advance_hours(20)
+        area = self.scheduler.create_life_area("Health")
+        sleep = self.scheduler.create_task(
+            life_area=area,
+            title="Sleep",
+            urgency_tier=UrgencyTier.CRITICAL,
+            active_window_start_local="21:00",
+            active_window_end_local="04:00",
+        )
+
+        before_window = self.scheduler.what_next()
+        self.assertIsNone(before_window)
+        self.assertEqual(sleep.thread.state, ThreadState.WAITING)
+
+        # During the sleep window, Sleep should auto-wake and dispatch.
+        self.clock.advance_hours(1.5)
+        in_window = self.scheduler.what_next()
+        self.assertIsNotNone(in_window)
+        assert in_window is not None
+        self.assertEqual(in_window.task.task_id, sleep.task_id)
+        self.assertEqual(sleep.thread.state, ThreadState.RUNNING)
+
+        # After 04:00, Sleep should auto-block again.
+        self.clock.advance_hours(7.0)
+        after_window = self.scheduler.what_next()
+        self.assertIsNone(after_window)
+        self.assertEqual(sleep.thread.state, ThreadState.WAITING)
+
+    def test_task_window_can_be_updated_after_task_creation(self) -> None:
+        self.clock.advance_hours(20)
+        area = self.scheduler.create_life_area("Health")
+        sleep = self.scheduler.create_task(
+            life_area=area,
+            title="Sleep",
+            urgency_tier=UrgencyTier.CRITICAL,
+        )
+
+        baseline = self.scheduler.what_next()
+        self.assertIsNotNone(baseline)
+        self.assertEqual(sleep.thread.state, ThreadState.RUNNING)
+
+        updated = self.scheduler.set_task_active_window(
+            sleep.task_id,
+            active_window_start_local="21:00",
+            active_window_end_local="04:00",
+        )
+        self.assertEqual(updated.active_window_start_minute, 21 * 60)
+        self.assertEqual(updated.active_window_end_minute, 4 * 60)
+        self.assertEqual(sleep.thread.state, ThreadState.WAITING)
+        self.assertIsNone(self.scheduler.what_next())
+
+        self.clock.advance_hours(1.25)
+        in_window = self.scheduler.what_next()
+        self.assertIsNotNone(in_window)
+        self.assertEqual(sleep.thread.state, ThreadState.RUNNING)
+
+        cleared = self.scheduler.set_task_active_window(
+            sleep.task_id,
+            active_window_start_local=None,
+            active_window_end_local=None,
+        )
+        self.assertIsNone(cleared.active_window_start_minute)
+        self.assertIsNone(cleared.active_window_end_minute)
+
+    def test_task_window_requires_critical_urgency_and_both_times(self) -> None:
+        area = self.scheduler.create_life_area("Work")
+
+        with self.assertRaises(ValueError):
+            self.scheduler.create_task(
+                life_area=area,
+                title="Windowed normal task",
+                urgency_tier=UrgencyTier.NORMAL,
+                active_window_start_local="09:00",
+                active_window_end_local="11:00",
+            )
+
+        with self.assertRaises(ValueError):
+            self.scheduler.create_task(
+                life_area=area,
+                title="Broken window task",
+                urgency_tier=UrgencyTier.CRITICAL,
+                active_window_start_local="09:00",
+                active_window_end_local=None,
+            )
+
+        normal = self.scheduler.create_task(
+            life_area=area,
+            title="Inbox zero",
+            urgency_tier=UrgencyTier.NORMAL,
+        )
+        with self.assertRaises(ValueError):
+            self.scheduler.set_task_active_window(
+                normal.task_id,
+                active_window_start_local="09:00",
+                active_window_end_local="11:00",
+            )
+
+        critical = self.scheduler.create_task(
+            life_area=area,
+            title="Sleep",
+            urgency_tier=UrgencyTier.CRITICAL,
+        )
+        with self.assertRaises(ValueError):
+            self.scheduler.set_task_active_window(
+                critical.task_id,
+                active_window_start_local="09:00",
+                active_window_end_local="09:00",
+            )
+
     def test_reset_simulation_requeues_unfinished_tasks(self) -> None:
         area = self.scheduler.create_life_area("Work")
         active = self.scheduler.create_task(

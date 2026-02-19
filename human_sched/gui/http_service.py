@@ -16,6 +16,7 @@ from human_sched.gui.contract import GuiAdapterMetadata
 from human_sched.gui.facade import SchedulerGuiFacade
 
 _TASK_ACTION_RE = re.compile(r"^/api/tasks/(?P<task_id>\d+)/(pause|resume|complete|delete)$")
+_TASK_WINDOW_RE = re.compile(r"^/api/tasks/(?P<task_id>\d+)/window$")
 _LIFE_AREA_DELETE_RE = re.compile(r"^/api/life-areas/(?P<life_area_id>\d+)/delete$")
 _LIFE_AREA_RENAME_RE = re.compile(r"^/api/life-areas/(?P<life_area_id>\d+)/rename$")
 
@@ -252,13 +253,47 @@ def build_request_handler(service: SchedulerHttpService) -> type[BaseHTTPRequest
 
                 if path == "/api/tasks":
                     body = self._read_json_body()
+                    active_window_start = body.get("active_window_start_local")
+                    active_window_end = body.get("active_window_end_local")
                     payload = service.facade.create_task(
                         life_area_id=int(body.get("life_area_id")),
                         title=str(body.get("title", "")),
                         urgency_tier=str(body.get("urgency_tier", "normal")),
+                        active_window_start_local=(
+                            str(active_window_start).strip()
+                            if active_window_start is not None
+                            else None
+                        ),
+                        active_window_end_local=(
+                            str(active_window_end).strip()
+                            if active_window_end is not None
+                            else None
+                        ),
                         notes=str(body.get("notes", "")),
                     )
                     self._write_json(payload, status=201)
+                    return
+
+                task_window_match = _TASK_WINDOW_RE.match(path)
+                if task_window_match:
+                    body = self._read_json_body()
+                    task_id = int(task_window_match.group("task_id"))
+                    active_window_start = body.get("active_window_start_local")
+                    active_window_end = body.get("active_window_end_local")
+                    payload = service.facade.set_task_active_window(
+                        task_id=task_id,
+                        active_window_start_local=(
+                            str(active_window_start).strip()
+                            if active_window_start is not None
+                            else None
+                        ),
+                        active_window_end_local=(
+                            str(active_window_end).strip()
+                            if active_window_end is not None
+                            else None
+                        ),
+                    )
+                    self._write_json(payload)
                     return
 
                 if path == "/api/what-next":

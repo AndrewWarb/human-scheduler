@@ -11,6 +11,8 @@ interface TaskFormProps {
     title: string;
     life_area_id: number;
     urgency_tier: string;
+    active_window_start_local?: string | null;
+    active_window_end_local?: string | null;
   }) => Promise<void>;
 }
 
@@ -23,12 +25,26 @@ export function TaskForm({ settings, lifeAreas, onSubmit }: TaskFormProps) {
 
     const form = e.currentTarget;
     const data = new FormData(form);
+    const urgencyTier = data.get("urgency_tier") as string;
+    const activeWindowStart = (data.get("active_window_start_local") as string).trim();
+    const activeWindowEnd = (data.get("active_window_end_local") as string).trim();
+
+    if ((activeWindowStart && !activeWindowEnd) || (!activeWindowStart && activeWindowEnd)) {
+      setError("Set both active window start and end times, or leave both blank.");
+      return;
+    }
+    if ((activeWindowStart || activeWindowEnd) && urgencyTier !== "critical") {
+      setError("Active window times are only supported for Critical (FIXPRI) tasks.");
+      return;
+    }
 
     try {
       await onSubmit({
         title: (data.get("title") as string).trim(),
         life_area_id: Number(data.get("life_area_id")),
-        urgency_tier: data.get("urgency_tier") as string,
+        urgency_tier: urgencyTier,
+        active_window_start_local: activeWindowStart || null,
+        active_window_end_local: activeWindowEnd || null,
       });
       form.reset();
     } catch (err) {
@@ -80,6 +96,24 @@ export function TaskForm({ settings, lifeAreas, onSubmit }: TaskFormProps) {
           })}
         </select>
       </label>
+      <div className="grid grid-cols-2 gap-2 max-[620px]:grid-cols-1">
+        <label className="field-label">
+          Active Start (optional)
+          <input
+            name="active_window_start_local"
+            type="time"
+            className="field-control"
+          />
+        </label>
+        <label className="field-label">
+          Active End (optional)
+          <input
+            name="active_window_end_local"
+            type="time"
+            className="field-control"
+          />
+        </label>
+      </div>
       <button
         type="submit"
         className="btn btn-primary"

@@ -27,6 +27,11 @@ export function CurrentRunBar({ dispatch, simulationRunning }: CurrentRunBarProp
         <p className="section-eyebrow text-run-eyebrow">Currently Running</p>
         <h2>{title}</h2>
         <p className="current-run-meta">{meta}</p>
+        {dispatch?.reason && (
+          <p className="current-run-reason">
+            Reason: {dispatch.reason}
+          </p>
+        )}
       </div>
       <Countdown
         endAt={dispatch?.focus_block_end_at}

@@ -86,6 +86,8 @@ class SchedulerGuiFacade:
         life_area_id: int,
         title: str,
         urgency_tier: str,
+        active_window_start_local: str | None = None,
+        active_window_end_local: str | None = None,
         notes: str = "",
     ) -> dict[str, Any]:
         def _create() -> dict[str, Any]:
@@ -95,6 +97,8 @@ class SchedulerGuiFacade:
                 life_area=life_area_id,
                 title=title,
                 urgency_tier=urgency_tier,
+                active_window_start_local=active_window_start_local,
+                active_window_end_local=active_window_end_local,
                 notes=notes,
                 start_runnable=True,
             )
@@ -105,6 +109,40 @@ class SchedulerGuiFacade:
             return self._serialize_task(task)
 
         return self._run_command(_create)
+
+    def set_task_active_window(
+        self,
+        *,
+        task_id: int,
+        active_window_start_local: str | None = None,
+        active_window_end_local: str | None = None,
+    ) -> dict[str, Any]:
+        def _set_window() -> dict[str, Any]:
+            task = self._scheduler.set_task_active_window(
+                task_id=task_id,
+                active_window_start_local=active_window_start_local,
+                active_window_end_local=active_window_end_local,
+            )
+            if (
+                task.active_window_start_minute is not None
+                and task.active_window_end_minute is not None
+            ):
+                window = (
+                    f"{self._clock_time(task.active_window_start_minute)}-"
+                    f"{self._clock_time(task.active_window_end_minute)}"
+                )
+                self.publish_info(
+                    f"Set active window for '{task.title}' to {window}.",
+                    related_task_id=task.task_id,
+                )
+            else:
+                self.publish_info(
+                    f"Cleared active window for '{task.title}'.",
+                    related_task_id=task.task_id,
+                )
+            return self._serialize_task(task)
+
+        return self._run_command(_set_window)
 
     def pause_task(self, *, task_id: int) -> dict[str, Any]:
         def _pause() -> dict[str, Any]:
@@ -363,6 +401,12 @@ class SchedulerGuiFacade:
             "urgency_tier": task.urgency_tier.value,
             "urgency_label": task.urgency_tier.label,
             "state": task.state.name.lower(),
+            "active_window_start_local": self._clock_time(
+                task.active_window_start_minute,
+            ),
+            "active_window_end_local": self._clock_time(
+                task.active_window_end_minute,
+            ),
             "notes": task.notes,
             "created_at": self._iso(task.created_at),
         }
@@ -433,3 +477,11 @@ class SchedulerGuiFacade:
     @staticmethod
     def _wall_now() -> datetime:
         return datetime.now(timezone.utc)
+
+    @staticmethod
+    def _clock_time(minute_of_day: int | None) -> str | None:
+        if minute_of_day is None:
+            return None
+        hour = (minute_of_day // 60) % 24
+        minute = minute_of_day % 60
+        return f"{hour:02d}:{minute:02d}"

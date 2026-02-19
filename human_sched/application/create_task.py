@@ -20,6 +20,8 @@ class CreateTask:
         life_area: LifeArea | int | str,
         title: str,
         urgency_tier: UrgencyTier | str = UrgencyTier.NORMAL,
+        active_window_start_local: str | None = None,
+        active_window_end_local: str | None = None,
         notes: str = "",
         start_runnable: bool = True,
     ) -> Task:
@@ -27,6 +29,8 @@ class CreateTask:
             life_area=life_area,
             title=title,
             urgency_tier=urgency_tier,
+            active_window_start_local=active_window_start_local,
+            active_window_end_local=active_window_end_local,
             notes=notes,
             start_runnable=start_runnable,
         )
