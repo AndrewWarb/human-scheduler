@@ -722,6 +722,19 @@ textarea.field-control {
   }
 }
 
+@keyframes switch-flash {
+  0%, 20%, 40%, 60%, 80%, 100% { background: #000; }
+  10%, 30%, 50%, 70%, 90% { background: #fff; }
+}
+
+.switch-flash-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  pointer-events: none;
+  animation: switch-flash 1.2s step-end forwards;
+}
+
 @keyframes fade-in {
   from {
     opacity: 0;

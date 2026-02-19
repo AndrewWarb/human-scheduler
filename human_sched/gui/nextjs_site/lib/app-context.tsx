@@ -394,6 +394,37 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
   }, [state.simulationRunning, state.dispatch, state.tasks, doWhatNext]);
 
+  // Auto-redispatch when focus block expires
+  useEffect(() => {
+    if (!state.simulationRunning || !state.dispatch?.focus_block_end_at) return;
+
+    const endMs = new Date(state.dispatch.focus_block_end_at).getTime();
+    const delayMs = endMs - Date.now();
+
+    if (delayMs <= 0) {
+      // Already expired — redispatch immediately (unless already in-flight)
+      if (!autoDispatchInFlightRef.current) {
+        autoDispatchInFlightRef.current = true;
+        void doWhatNext().finally(() => {
+          autoDispatchInFlightRef.current = false;
+          autoDispatchCooldownUntilRef.current = Date.now() + 1000;
+        });
+      }
+      return;
+    }
+
+    const id = setTimeout(() => {
+      if (!autoDispatchInFlightRef.current) {
+        autoDispatchInFlightRef.current = true;
+        void doWhatNext().finally(() => {
+          autoDispatchInFlightRef.current = false;
+          autoDispatchCooldownUntilRef.current = Date.now() + 1000;
+        });
+      }
+    }, delayMs);
+    return () => clearTimeout(id);
+  }, [state.simulationRunning, state.dispatch?.focus_block_end_at, doWhatNext]);
+
   // Auto-refresh diagnostics every 5s
   useEffect(() => {
     const id = setInterval(() => {
