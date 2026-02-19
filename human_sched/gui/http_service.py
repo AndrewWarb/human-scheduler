@@ -174,6 +174,10 @@ def build_request_handler(service: SchedulerHttpService) -> type[BaseHTTPRequest
                     self._write_json(service.diagnostics_payload())
                     return
 
+                if path == "/api/scheduler-state":
+                    self._write_json(service.facade.scheduler_state())
+                    return
+
                 if path == "/api/life-areas":
                     self._write_json({"items": service.facade.list_life_areas()})
                     return

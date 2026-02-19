@@ -15,12 +15,14 @@ import type {
   Dispatch,
   LifeArea,
   SchedulerEvent,
+  SchedulerState,
   Task,
 } from "./types";
 import {
   fetchMeta,
   fetchSettings,
   fetchDiagnostics,
+  fetchSchedulerState,
   fetchLifeAreas,
   fetchTasks,
   fetchDispatch,
@@ -40,6 +42,7 @@ interface AppState {
   meta: AdapterMeta | null;
   settings: AppSettings | null;
   diagnostics: Diagnostics | null;
+  schedulerState: SchedulerState | null;
   lifeAreas: LifeArea[];
   tasks: Task[];
   events: SchedulerEvent[];
@@ -53,6 +56,7 @@ type Action =
   | { type: "SET_META"; payload: AdapterMeta }
   | { type: "SET_SETTINGS"; payload: AppSettings }
   | { type: "SET_DIAGNOSTICS"; payload: Diagnostics }
+  | { type: "SET_SCHEDULER_STATE"; payload: SchedulerState }
   | { type: "SET_LIFE_AREAS"; payload: LifeArea[] }
   | { type: "SET_TASKS"; payload: Task[] }
   | { type: "SET_EVENTS"; payload: SchedulerEvent[] }
@@ -66,6 +70,7 @@ const INITIAL_STATE: AppState = {
   meta: null,
   settings: null,
   diagnostics: null,
+  schedulerState: null,
   lifeAreas: [],
   tasks: [],
   events: [],
@@ -85,6 +90,8 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, settings: action.payload };
     case "SET_DIAGNOSTICS":
       return { ...state, diagnostics: action.payload };
+    case "SET_SCHEDULER_STATE":
+      return { ...state, schedulerState: action.payload };
     case "SET_LIFE_AREAS":
       return { ...state, lifeAreas: action.payload };
     case "SET_TASKS":
@@ -165,7 +172,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const refreshAll = useCallback(async () => {
-    const [meta, settings, areas, tasksRes, dispatchRes, eventsRes, diag] =
+    const [meta, settings, areas, tasksRes, dispatchRes, eventsRes, diag, schedState] =
       await Promise.all([
         fetchMeta().catch(() => null),
         fetchSettings().catch(() => null),
@@ -174,6 +181,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         fetchDispatch().catch(() => null),
         fetchEvents().catch(() => null),
         fetchDiagnostics().catch(() => null),
+        fetchSchedulerState().catch(() => null),
       ]);
 
     if (meta) dispatch({ type: "SET_META", payload: meta });
@@ -186,6 +194,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (eventsRes)
       dispatch({ type: "SET_EVENTS", payload: eventsRes.items ?? [] });
     if (diag) dispatch({ type: "SET_DIAGNOSTICS", payload: diag });
+    if (schedState) dispatch({ type: "SET_SCHEDULER_STATE", payload: schedState });
   }, []);
 
   const refreshTasks = useCallback(
@@ -425,11 +434,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return () => clearTimeout(id);
   }, [state.simulationRunning, state.dispatch?.focus_block_end_at, doWhatNext]);
 
-  // Auto-refresh diagnostics every 5s
+  // Auto-refresh diagnostics + scheduler state every 5s
   useEffect(() => {
     const id = setInterval(() => {
       fetchDiagnostics()
         .then((d) => dispatch({ type: "SET_DIAGNOSTICS", payload: d }))
+        .catch(() => {});
+      fetchSchedulerState()
+        .then((s) => dispatch({ type: "SET_SCHEDULER_STATE", payload: s }))
         .catch(() => {});
     }, 5000);
     return () => clearInterval(id);

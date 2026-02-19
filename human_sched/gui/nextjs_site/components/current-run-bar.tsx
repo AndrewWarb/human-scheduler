@@ -42,13 +42,13 @@ export function CurrentRunBar({ dispatch, simulationRunning }: CurrentRunBarProp
               className="btn btn-ghost"
               onClick={() => doTaskAction(taskId, "pause")}
             >
-              Pause
+              Block
             </button>
             <button
               className="btn btn-ghost"
               onClick={() => doTaskAction(taskId, "complete")}
             >
-              Complete
+              Terminate
             </button>
           </div>
         )}

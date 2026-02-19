@@ -359,6 +359,58 @@ class SchedulerGuiFacade:
                 "event_stream_retried_writes": event_stream_retried_writes,
             }
 
+    def scheduler_state(self) -> dict[str, Any]:
+        """Live snapshot of scheduler internals for the dashboard."""
+        with self._lock:
+            scheduler = self._scheduler
+            now_us = scheduler.time_scale.now_scheduler_us()
+            processor = scheduler.processor
+            active_thread = processor.active_thread
+
+            # Thread (task) list with scheduler metadata
+            threads: list[dict[str, Any]] = []
+            for task in scheduler.tasks_by_id.values():
+                t = task.thread
+                threads.append({
+                    "task_id": task.task_id,
+                    "title": task.title,
+                    "life_area": task.life_area.name,
+                    "urgency_tier": task.urgency_tier.value,
+                    "urgency_label": task.urgency_tier.label,
+                    "state": t.state.name.lower(),
+                    "base_pri": t.base_pri,
+                    "sched_pri": t.sched_pri,
+                    "cpu_usage": t.cpu_usage,
+                    "total_cpu_us": t.total_cpu_us,
+                    "context_switches": t.context_switches,
+                    "is_active": active_thread is not None and t.tid == active_thread.tid,
+                })
+
+            # Life area interactivity scores
+            life_areas: list[dict[str, Any]] = []
+            for area in scheduler.life_areas_by_id.values():
+                life_areas.append({
+                    "id": area.life_area_id,
+                    "name": area.name,
+                    "task_count": len(area.task_ids),
+                    "interactivity_scores": area.interactivity_scores(),
+                })
+
+            # Scheduler-wide state
+            quantum_end_us = processor.quantum_end
+            remaining_us = max(0, quantum_end_us - now_us) if quantum_end_us > 0 else 0
+
+            return {
+                "now_us": now_us,
+                "tick": scheduler.scheduler.current_tick,
+                "active_task_id": active_thread.tid if active_thread else None,
+                "quantum_remaining_us": remaining_us,
+                "threads": threads,
+                "life_areas": life_areas,
+                "recent_trace": scheduler.scheduler.trace_log[-10:],
+                "recent_switches": scheduler.scheduler.processor_switch_log[-5:],
+            }
+
     def metadata(self, *, adapter_metadata: GuiAdapterMetadata, base_url: str) -> dict[str, Any]:
         return {
             "adapter": {

@@ -101,9 +101,10 @@ function TaskItem({
         <Pill>ID: {task.id}</Pill>
         <Pill>
           {task.urgency_label}
-          {XNU_URGENCY_LABELS[task.urgency_tier]
-            ? ` (${XNU_URGENCY_LABELS[task.urgency_tier].short} / ${XNU_URGENCY_LABELS[task.urgency_tier].human})`
-            : ""}
+          {(() => {
+            const info = XNU_URGENCY_LABELS[task.urgency_tier];
+            return info ? ` (${info.short} / ${info.human})` : "";
+          })()}
         </Pill>
         <Pill>State: {task.state}</Pill>
         {task.active_window_start_local && task.active_window_end_local && (

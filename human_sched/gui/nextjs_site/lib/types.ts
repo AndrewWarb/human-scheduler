@@ -84,6 +84,39 @@ export interface AdapterMeta {
   base_url: string;
 }
 
+export interface SchedulerThread {
+  task_id: number;
+  title: string;
+  life_area: string;
+  urgency_tier: string;
+  urgency_label: string;
+  state: string;
+  base_pri: number;
+  sched_pri: number;
+  cpu_usage: number;
+  total_cpu_us: number;
+  context_switches: number;
+  is_active: boolean;
+}
+
+export interface SchedulerLifeArea {
+  id: number;
+  name: string;
+  task_count: number;
+  interactivity_scores: Record<string, number>;
+}
+
+export interface SchedulerState {
+  now_us: number;
+  tick: number;
+  active_task_id: number | null;
+  quantum_remaining_us: number;
+  threads: SchedulerThread[];
+  life_areas: SchedulerLifeArea[];
+  recent_trace: string[];
+  recent_switches: string[];
+}
+
 export interface Diagnostics {
   adapter_name: string;
   adapter_version: string;

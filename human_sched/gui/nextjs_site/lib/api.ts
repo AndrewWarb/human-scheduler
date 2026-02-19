@@ -5,6 +5,7 @@ import type {
   Dispatch,
   LifeArea,
   SchedulerEvent,
+  SchedulerState,
   Task,
 } from "./types";
 
@@ -67,6 +68,10 @@ export async function fetchSettings(): Promise<AppSettings> {
 
 export async function fetchDiagnostics(): Promise<Diagnostics> {
   return apiGet("/api/diagnostics");
+}
+
+export async function fetchSchedulerState(): Promise<SchedulerState> {
+  return apiGet("/api/scheduler-state");
 }
 
 export async function fetchLifeAreas(): Promise<{ items: LifeArea[] }> {
