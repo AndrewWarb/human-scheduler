@@ -159,3 +159,12 @@ export async function updateTaskWindow(
 ): Promise<Task> {
   return apiPost(`/api/tasks/${taskId}/window`, body);
 }
+
+export async function updateTaskUrgency(
+  taskId: number,
+  body: {
+    urgency_tier: string;
+  },
+): Promise<Task> {
+  return apiPost(`/api/tasks/${taskId}/urgency`, body);
+}

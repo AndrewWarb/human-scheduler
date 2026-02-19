@@ -455,6 +455,122 @@ class HumanSchedulerTests(unittest.TestCase):
         self.assertEqual(config.hours_per_us, 0.001)
         self.assertEqual(config.max_catchup_ticks, 7)
 
+    def test_change_urgency_runnable_task_moves_to_higher_bucket(self) -> None:
+        area = self.scheduler.create_life_area("Work")
+        task = self.scheduler.create_task(
+            life_area=area,
+            title="Report",
+            urgency_tier=UrgencyTier.NORMAL,
+        )
+        self.assertEqual(task.urgency_tier, UrgencyTier.NORMAL)
+        self.assertEqual(task.thread.state, ThreadState.RUNNABLE)
+
+        result = self.scheduler.change_task_urgency(
+            task.task_id, UrgencyTier.IMPORTANT
+        )
+
+        self.assertEqual(result.urgency_tier, UrgencyTier.IMPORTANT)
+        self.assertEqual(
+            result.thread.base_pri, UrgencyTier.IMPORTANT.base_priority
+        )
+        self.assertEqual(
+            result.thread.sched_pri, UrgencyTier.IMPORTANT.base_priority
+        )
+        # Thread should be re-enqueued as runnable (or running if selected).
+        self.assertIn(
+            result.thread.state,
+            (ThreadState.RUNNABLE, ThreadState.RUNNING),
+        )
+
+    def test_change_urgency_running_task_evicts_and_reenqueues(self) -> None:
+        area = self.scheduler.create_life_area("Work")
+        task = self.scheduler.create_task(
+            life_area=area,
+            title="Coding",
+            urgency_tier=UrgencyTier.NORMAL,
+        )
+        # Dispatch so the thread becomes RUNNING.
+        dispatch = self.scheduler.what_next()
+        self.assertIsNotNone(dispatch)
+        self.assertEqual(task.thread.state, ThreadState.RUNNING)
+
+        result = self.scheduler.change_task_urgency(
+            task.task_id, UrgencyTier.IMPORTANT
+        )
+
+        self.assertEqual(result.urgency_tier, UrgencyTier.IMPORTANT)
+        self.assertEqual(
+            result.thread.base_pri, UrgencyTier.IMPORTANT.base_priority
+        )
+        # After evict + re-enqueue, thread should be active again
+        # (only task, so it gets selected).
+        self.assertIn(
+            result.thread.state,
+            (ThreadState.RUNNABLE, ThreadState.RUNNING),
+        )
+
+    def test_change_urgency_waiting_task_updates_params(self) -> None:
+        area = self.scheduler.create_life_area("Home")
+        task = self.scheduler.create_task(
+            life_area=area,
+            title="Organize",
+            urgency_tier=UrgencyTier.NORMAL,
+        )
+        self.scheduler.pause_task(task.task_id)
+        self.assertEqual(task.thread.state, ThreadState.WAITING)
+
+        result = self.scheduler.change_task_urgency(
+            task.task_id, UrgencyTier.IMPORTANT
+        )
+
+        self.assertEqual(result.urgency_tier, UrgencyTier.IMPORTANT)
+        self.assertEqual(
+            result.thread.base_pri, UrgencyTier.IMPORTANT.base_priority
+        )
+        self.assertEqual(
+            result.thread.sched_pri, UrgencyTier.IMPORTANT.base_priority
+        )
+        # Still waiting — not placed in any runqueue.
+        self.assertEqual(result.thread.state, ThreadState.WAITING)
+
+        # Resume should use new priority.
+        self.scheduler.resume_task(task.task_id)
+        self.assertIn(
+            task.thread.state,
+            (ThreadState.RUNNABLE, ThreadState.RUNNING),
+        )
+
+    def test_change_urgency_completed_task_raises(self) -> None:
+        area = self.scheduler.create_life_area("Home")
+        task = self.scheduler.create_task(
+            life_area=area,
+            title="Done item",
+            urgency_tier=UrgencyTier.NORMAL,
+        )
+        self.scheduler.complete_task(task.task_id)
+        self.assertEqual(task.thread.state, ThreadState.TERMINATED)
+
+        with self.assertRaises(ValueError):
+            self.scheduler.change_task_urgency(
+                task.task_id, UrgencyTier.IMPORTANT
+            )
+
+    def test_change_urgency_noop_when_same_tier(self) -> None:
+        area = self.scheduler.create_life_area("Work")
+        task = self.scheduler.create_task(
+            life_area=area,
+            title="Steady",
+            urgency_tier=UrgencyTier.NORMAL,
+        )
+        old_base = task.thread.base_pri
+
+        result = self.scheduler.change_task_urgency(
+            task.task_id, UrgencyTier.NORMAL
+        )
+
+        self.assertEqual(result.urgency_tier, UrgencyTier.NORMAL)
+        self.assertEqual(result.thread.base_pri, old_base)
+
 
 if __name__ == "__main__":
     unittest.main()

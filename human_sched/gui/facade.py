@@ -144,6 +144,25 @@ class SchedulerGuiFacade:
 
         return self._run_command(_set_window)
 
+    def change_task_urgency(
+        self,
+        *,
+        task_id: int,
+        urgency_tier: str,
+    ) -> dict[str, Any]:
+        def _change_urgency() -> dict[str, Any]:
+            task = self._scheduler.change_task_urgency(
+                task_id=task_id,
+                urgency_tier=urgency_tier,
+            )
+            self.publish_info(
+                f"Changed urgency for '{task.title}' to {task.urgency_tier.label}.",
+                related_task_id=task.task_id,
+            )
+            return self._serialize_task(task)
+
+        return self._run_command(_change_urgency)
+
     def pause_task(self, *, task_id: int) -> dict[str, Any]:
         def _pause() -> dict[str, Any]:
             task = self._scheduler.pause_task(task_id)

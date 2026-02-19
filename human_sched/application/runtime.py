@@ -399,6 +399,112 @@ class HumanTaskScheduler:
             self._persist_state_unlocked()
             return task
 
+    def change_task_urgency(
+        self,
+        task_id: int,
+        urgency_tier: UrgencyTier | str,
+    ) -> Task:
+        """Change a task's urgency tier while it is live in the scheduler.
+
+        Handles all thread states: RUNNING threads are evicted and
+        re-enqueued, RUNNABLE threads are removed and re-inserted at
+        the new priority, WAITING threads simply get updated params.
+        Raises ``ValueError`` for TERMINATED (completed) tasks.
+        """
+        with self._lock:
+            now_us = self._now_us()
+            self._apply_lazy_catchup(now_us)
+
+            task = self._require_task(task_id)
+            new_urgency = UrgencyTier.from_value(urgency_tier)
+
+            if task.urgency_tier == new_urgency:
+                return task
+
+            thread = task.thread
+
+            if thread.state == ThreadState.TERMINATED:
+                raise ValueError(
+                    f"Task {task_id} is completed and cannot change urgency"
+                )
+
+            if thread.state == ThreadState.RUNNING:
+                # Evict from CPU — accounts CPU time, decrements run_count
+                # on old bucket group, selects next thread.
+                new_thread = self.scheduler.thread_block(
+                    thread, self.processor, now_us
+                )
+                if new_thread is not None:
+                    self._arm_quantum_for_active(now_us)
+                else:
+                    self._cancel_quantum_artifacts(reset_quantum_end=True)
+
+                # Update thread params at new urgency level.
+                self._apply_urgency_params(thread, task, new_urgency)
+
+                # Re-enqueue with new priority.
+                preempt_proc = self.scheduler.thread_wakeup(thread, now_us)
+                self._handle_preemption_request(
+                    preempt_proc, now_us, trigger_when_idle=False
+                )
+
+            elif thread.state == ThreadState.RUNNABLE:
+                # Remove from clutch bucket runqueue.
+                self.scheduler.thread_remove(thread, now_us)
+
+                # thread_remove doesn't decrement run_count (only
+                # thread_block does).  Manually adjust the old bucket
+                # group so the population counter stays consistent.
+                clutch = thread.thread_group.sched_clutch
+                if clutch is not None:
+                    old_cbg = clutch.sc_clutch_groups[thread.th_sched_bucket]
+                    old_cbg.run_count_dec(now_us)
+
+                thread.state = ThreadState.WAITING
+                thread.last_run_time = now_us
+
+                # Update thread params at new urgency level.
+                self._apply_urgency_params(thread, task, new_urgency)
+
+                # Re-enqueue with new priority.
+                preempt_proc = self.scheduler.thread_wakeup(thread, now_us)
+                self._handle_preemption_request(
+                    preempt_proc, now_us, trigger_when_idle=False
+                )
+
+            else:
+                # WAITING — not in any runqueue, just update params.
+                self._apply_urgency_params(thread, task, new_urgency)
+
+            self._persist_state_unlocked()
+            return task
+
+    def _apply_urgency_params(
+        self,
+        thread: Thread,
+        task: Task,
+        new_urgency: UrgencyTier,
+    ) -> None:
+        """Update thread scheduling parameters for a new urgency tier."""
+        new_mode = new_urgency.sched_mode
+        new_base = new_urgency.base_priority
+
+        thread.sched_mode = new_mode
+        thread.base_pri = new_base
+        thread.sched_pri = new_base
+        thread.max_priority = new_base
+        thread.th_sched_bucket = _thread_mod.thread_bucket_map(
+            new_mode, new_base
+        )
+
+        # Reset CPU accounting — old decay values are meaningless at
+        # the new priority level.
+        thread.cpu_usage = 0
+        thread.sched_usage = 0
+        thread.cpu_delta = 0
+
+        task.urgency_tier = new_urgency
+
     def delete_task(self, task_id: int) -> Task:
         """Delete a task from scheduler state."""
         with self._lock:

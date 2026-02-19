@@ -21,17 +21,26 @@ const STATE_LABELS: Record<string, string> = {
 function ThreadRow({
   thread,
   onAction,
+  onUrgencyChange,
+  urgencyOptions,
 }: {
   thread: SchedulerThread;
-  onAction: (taskId: number, action: "pause" | "complete") => void;
+  onAction: (taskId: number, action: "pause" | "resume" | "complete") => void;
+  onUrgencyChange: (taskId: number, urgencyTier: string) => void;
+  urgencyOptions: Array<{ value: string; label: string }>;
 }) {
-  const canAct = thread.state === "running" || thread.state === "runnable";
+  const isRunnable = thread.state === "running" || thread.state === "runnable";
+  const isBlocked = thread.state === "waiting";
+  const tierOptions =
+    urgencyOptions.length > 0
+      ? urgencyOptions
+      : [{ value: thread.urgency_tier, label: thread.urgency_label }];
 
   return (
     <div
       className={`surface-item grid grid-cols-[1fr_auto] items-center gap-x-3 gap-y-1 py-2.5 px-3${
         thread.is_active ? " surface-item-active" : ""
-      }`}
+      }${thread.state === "waiting" ? " opacity-50" : ""}`}
     >
       <div className="flex items-center gap-2 min-w-0">
         <span
@@ -50,16 +59,51 @@ function ThreadRow({
       <div className="col-span-2 flex flex-wrap items-center gap-x-4 gap-y-0.5 text-[0.72rem] text-muted font-mono">
         <span>pri {thread.sched_pri}</span>
         <span>cpu {thread.cpu_usage}</span>
-        <span>{thread.urgency_label}</span>
+        <label className="inline-flex items-center gap-1.5 text-[0.68rem]">
+          <span>{thread.urgency_label}</span>
+          <select
+            className="field-control !py-0 !px-1.5 !h-6 !text-[0.68rem] !rounded-md !min-w-[8.8rem]"
+            value={thread.urgency_tier}
+            onChange={(event) => {
+              const nextTier = event.target.value;
+              if (nextTier !== thread.urgency_tier) {
+                onUrgencyChange(thread.task_id, nextTier);
+              }
+            }}
+            aria-label={`Set urgency for ${thread.title}`}
+          >
+            {tierOptions.map((tier) => (
+              <option key={tier.value} value={tier.value}>
+                {tier.label}
+              </option>
+            ))}
+          </select>
+        </label>
         <span>{thread.life_area}</span>
         <span>ctx {thread.context_switches}</span>
-        {canAct && (
+        {isRunnable && (
           <>
             <button
               className="btn btn-ghost !py-0.5 !px-2 !text-[0.68rem] !rounded-lg"
               onClick={() => onAction(thread.task_id, "pause")}
             >
               Block
+            </button>
+            <button
+              className="btn btn-ghost !py-0.5 !px-2 !text-[0.68rem] !rounded-lg"
+              onClick={() => onAction(thread.task_id, "complete")}
+            >
+              Terminate
+            </button>
+          </>
+        )}
+        {isBlocked && (
+          <>
+            <button
+              className="btn btn-ghost !py-0.5 !px-2 !text-[0.68rem] !rounded-lg"
+              onClick={() => onAction(thread.task_id, "resume")}
+            >
+              Unblock
             </button>
             <button
               className="btn btn-ghost !py-0.5 !px-2 !text-[0.68rem] !rounded-lg"
@@ -119,8 +163,9 @@ function InteractivityBar({
 }
 
 export function DashboardView() {
-  const { state, doTaskAction } = useApp();
+  const { state, doTaskAction, doChangeTaskUrgency } = useApp();
   const ss = state.schedulerState;
+  const urgencyOptions = state.settings?.urgency_tiers ?? [];
 
   if (!ss) {
     return (
@@ -172,7 +217,13 @@ export function DashboardView() {
         <div className="grid gap-1.5">
           {sortedThreads.length > 0 ? (
             sortedThreads.map((t) => (
-              <ThreadRow key={t.task_id} thread={t} onAction={doTaskAction} />
+              <ThreadRow
+                key={t.task_id}
+                thread={t}
+                onAction={doTaskAction}
+                onUrgencyChange={doChangeTaskUrgency}
+                urgencyOptions={urgencyOptions}
+              />
             ))
           ) : (
             <p className="text-muted text-[0.85rem] py-2">No active threads.</p>

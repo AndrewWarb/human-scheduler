@@ -31,6 +31,7 @@ import {
   resetSimulation as apiResetSimulation,
   taskAction as apiTaskAction,
   updateTaskWindow as apiUpdateTaskWindow,
+  updateTaskUrgency as apiUpdateTaskUrgency,
   createTask as apiCreateTask,
   createLifeArea as apiCreateLifeArea,
   deleteLifeArea as apiDeleteLifeArea,
@@ -135,6 +136,10 @@ interface AppContextValue {
       active_window_start_local?: string | null;
       active_window_end_local?: string | null;
     },
+  ) => Promise<void>;
+  doChangeTaskUrgency: (
+    taskId: number,
+    urgencyTier: string,
   ) => Promise<void>;
   doCreateTask: (body: {
     title: string;
@@ -325,6 +330,33 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [showToast],
   );
 
+  const doChangeTaskUrgency = useCallback(
+    async (taskId: number, urgencyTier: string) => {
+      try {
+        await apiUpdateTaskUrgency(taskId, { urgency_tier: urgencyTier });
+        showToast("Task urgency updated.");
+
+        const [tasksRes, dispatchRes, diag, schedulerState] = await Promise.all([
+          fetchTasks().catch(() => null),
+          fetchDispatch().catch(() => null),
+          fetchDiagnostics().catch(() => null),
+          fetchSchedulerState().catch(() => null),
+        ]);
+        if (tasksRes)
+          dispatch({ type: "SET_TASKS", payload: tasksRes.items ?? [] });
+        if (dispatchRes)
+          dispatch({ type: "SET_DISPATCH", payload: dispatchRes.dispatch });
+        if (diag) dispatch({ type: "SET_DIAGNOSTICS", payload: diag });
+        if (schedulerState) {
+          dispatch({ type: "SET_SCHEDULER_STATE", payload: schedulerState });
+        }
+      } catch (e) {
+        showToast(e instanceof Error ? e.message : String(e));
+      }
+    },
+    [showToast],
+  );
+
   const doCreateTask = useCallback(
     async (body: {
       title: string;
@@ -487,6 +519,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     resetSimulation,
     doTaskAction,
     doUpdateTaskWindow,
+    doChangeTaskUrgency,
     doCreateTask,
     doCreateLifeArea,
     doDeleteLifeArea,

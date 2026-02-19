@@ -161,6 +161,24 @@ class GuiPlatformTests(unittest.TestCase):
         self.assertIsNone(cleared["active_window_start_local"])
         self.assertIsNone(cleared["active_window_end_local"])
 
+    def test_facade_can_change_task_urgency(self) -> None:
+        area = self.facade.create_life_area(name="Admin")
+        task = self.facade.create_task(
+            life_area_id=int(area["id"]),
+            title="Process invoices",
+            urgency_tier="normal",
+        )
+
+        updated = self.facade.change_task_urgency(
+            task_id=int(task["id"]),
+            urgency_tier="important",
+        )
+        self.assertEqual(updated["urgency_tier"], "important")
+
+        all_tasks = self.facade.list_tasks()
+        self.assertEqual(len(all_tasks), 1)
+        self.assertEqual(all_tasks[0]["urgency_tier"], "important")
+
     def test_facade_life_area_payload_omits_description(self) -> None:
         area = self.facade.create_life_area(name="Focus")
 

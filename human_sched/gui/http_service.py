@@ -17,6 +17,7 @@ from human_sched.gui.facade import SchedulerGuiFacade
 
 _TASK_ACTION_RE = re.compile(r"^/api/tasks/(?P<task_id>\d+)/(pause|resume|complete|delete)$")
 _TASK_WINDOW_RE = re.compile(r"^/api/tasks/(?P<task_id>\d+)/window$")
+_TASK_URGENCY_RE = re.compile(r"^/api/tasks/(?P<task_id>\d+)/urgency$")
 _LIFE_AREA_DELETE_RE = re.compile(r"^/api/life-areas/(?P<life_area_id>\d+)/delete$")
 _LIFE_AREA_RENAME_RE = re.compile(r"^/api/life-areas/(?P<life_area_id>\d+)/rename$")
 
@@ -296,6 +297,17 @@ def build_request_handler(service: SchedulerHttpService) -> type[BaseHTTPRequest
                             if active_window_end is not None
                             else None
                         ),
+                    )
+                    self._write_json(payload)
+                    return
+
+                task_urgency_match = _TASK_URGENCY_RE.match(path)
+                if task_urgency_match:
+                    body = self._read_json_body()
+                    task_id = int(task_urgency_match.group("task_id"))
+                    payload = service.facade.change_task_urgency(
+                        task_id=task_id,
+                        urgency_tier=str(body.get("urgency_tier", "")),
                     )
                     self._write_json(payload)
                     return
