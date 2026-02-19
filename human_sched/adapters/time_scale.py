@@ -82,6 +82,14 @@ class TimeScaleAdapter:
         hours = self.us_to_hours(scheduler_us)
         return self._wall_epoch + timedelta(hours=hours)
 
+    def __getstate__(self) -> dict:
+        return {"_config": self._config, "_wall_epoch": self._wall_epoch}
+
+    def __setstate__(self, state: dict) -> None:
+        self._config = state["_config"]
+        self._wall_epoch = state["_wall_epoch"]
+        self._now_provider = lambda: datetime.now(timezone.utc)
+
 
 def load_time_scale_config(env_file: str = ".env") -> TimeScaleConfig:
     """Load time-scale configuration from env file, with safe fallbacks."""

@@ -77,6 +77,14 @@ class PriorityQueueMax(Generic[T]):
         self.remove(item)
         self.insert(item)
 
+    def __getstate__(self) -> dict:
+        return {"_heap": self._heap, "_counter": self._counter}
+
+    def __setstate__(self, state: dict) -> None:
+        self._heap = state["_heap"]
+        self._counter = state["_counter"]
+        self._key = None  # restored by owning object (e.g. SchedClutchBucket)
+
 
 class PriorityQueueDeadlineMin(Generic[T]):
     """Min-deadline priority queue. Items with earliest deadline dequeued first.
@@ -125,6 +133,14 @@ class PriorityQueueDeadlineMin(Generic[T]):
         """Re-insert item with its current deadline."""
         self.remove(item)
         self.insert(item)
+
+    def __getstate__(self) -> dict:
+        return {"_heap": self._heap, "_counter": self._counter}
+
+    def __setstate__(self, state: dict) -> None:
+        self._heap = state["_heap"]
+        self._counter = state["_counter"]
+        self._deadline_fn = None  # restored by owning ClutchRoot
 
 
 class StablePriorityQueue(Generic[T]):
@@ -205,6 +221,14 @@ class StablePriorityQueue(Generic[T]):
             refreshed.append((-new_packed, stamp_key, seq_key, item))
         self._heap = refreshed
         heapq.heapify(self._heap)
+
+    def __getstate__(self) -> dict:
+        return {"_heap": self._heap, "_counter": self._counter}
+
+    def __setstate__(self, state: dict) -> None:
+        self._heap = state["_heap"]
+        self._counter = state["_counter"]
+        self._pri_fn = None  # restored by owning SchedClutchBucket or Scheduler
 
 
 class ClutchBucketRunqueue:

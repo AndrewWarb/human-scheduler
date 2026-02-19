@@ -992,3 +992,14 @@ class Scheduler:
     def urgency_dec(self, thread: Thread) -> None:
         if is_above_timeshare(thread.th_sched_bucket) or thread.is_realtime:
             self.clutch_root.scr_urgency = max(0, self.clutch_root.scr_urgency - 1)
+
+    def __getstate__(self) -> dict:
+        state = {slot: getattr(self, slot) for slot in self.__slots__}
+        state["_on_preemption"] = None
+        return state
+
+    def __setstate__(self, state: dict) -> None:
+        for slot in self.__slots__:
+            setattr(self, slot, state.get(slot))
+        for runq in self._bound_runqs:
+            runq._pri_fn = lambda t: t.sched_pri

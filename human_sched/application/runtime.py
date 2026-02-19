@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import json
+import logging
+import pickle
 from pathlib import Path
 from threading import RLock, Timer
 from typing import Any, Callable
@@ -19,6 +21,7 @@ from xnu_sched.constants import (
 )
 from xnu_sched.processor import Processor, ProcessorSet
 from xnu_sched.scheduler import Scheduler
+import xnu_sched.thread as _thread_mod
 from xnu_sched.thread import Thread, ThreadGroup, ThreadState
 from xnu_sched.timeshare import update_thread_cpu_usage
 
@@ -31,6 +34,11 @@ from human_sched.domain.life_area import LifeArea
 from human_sched.domain.task import Task
 from human_sched.domain.urgency import UrgencyTier
 from human_sched.ports.notifications import NotificationEventType, NotificationPort
+
+_log = logging.getLogger(__name__)
+
+_ENGINE_STATE_VERSION = 1
+_ENGINE_STATE_FILENAME = "engine_state.pkl"
 
 
 @dataclass(slots=True)
@@ -953,11 +961,124 @@ class HumanTaskScheduler:
 
         self._write_json_atomic(life_areas_path, life_areas_payload)
         self._write_json_atomic(tasks_path, tasks_payload)
+        self._persist_engine_state_unlocked()
+
+    def _persist_engine_state_unlocked(self) -> None:
+        """Pickle the full engine object graph for restart recovery."""
+        if self._persistence_dir is None:
+            return
+
+        snapshot = (
+            _ENGINE_STATE_VERSION,
+            self.scheduler,
+            self.pset,
+            self.life_areas_by_id,
+            self._life_areas_by_name,
+            self.tasks_by_id,
+            self.time_scale,
+            self.max_catchup_ticks,
+            self._last_tick_us,
+            self._quantum_notification_id,
+            self._tick_notification_id,
+            _thread_mod._next_tid,
+            ThreadGroup._next_id,
+        )
+
+        pkl_path = self._persistence_dir / _ENGINE_STATE_FILENAME
+        tmp_path = pkl_path.with_suffix(".pkl.tmp")
+        try:
+            with tmp_path.open("wb") as fh:
+                pickle.dump(snapshot, fh, protocol=pickle.HIGHEST_PROTOCOL)
+            tmp_path.replace(pkl_path)
+        except Exception:
+            _log.warning("Failed to persist engine state", exc_info=True)
+            if tmp_path.exists():
+                tmp_path.unlink()
+
+    def _load_engine_state_unlocked(self) -> bool:
+        """Try to restore the full engine from a pickle snapshot.
+
+        Returns True on success, False on any failure (missing, corrupt,
+        version mismatch).  Caller should fall back to JSON reconstruction
+        when False is returned.
+        """
+        if self._persistence_dir is None:
+            return False
+
+        pkl_path = self._persistence_dir / _ENGINE_STATE_FILENAME
+        if not pkl_path.exists():
+            return False
+
+        try:
+            with pkl_path.open("rb") as fh:
+                snapshot = pickle.load(fh)  # noqa: S301
+
+            if not isinstance(snapshot, tuple) or len(snapshot) < 13:
+                _log.warning("Engine state snapshot has unexpected structure")
+                return False
+
+            version = snapshot[0]
+            if version != _ENGINE_STATE_VERSION:
+                _log.warning(
+                    "Engine state version mismatch: expected %d, got %d",
+                    _ENGINE_STATE_VERSION,
+                    version,
+                )
+                return False
+
+            (
+                _,  # version, already checked
+                scheduler,
+                pset,
+                life_areas_by_id,
+                life_areas_by_name,
+                tasks_by_id,
+                time_scale,
+                max_catchup_ticks,
+                last_tick_us,
+                quantum_notification_id,
+                tick_notification_id,
+                next_tid,
+                next_tg_id,
+            ) = snapshot
+
+            # Restore module-level counters so new objects get unique IDs.
+            _thread_mod._next_tid = next_tid
+            ThreadGroup._next_id = next_tg_id
+
+            self.scheduler = scheduler
+            self.pset = pset
+            self.processor = pset.processors[0]
+            self.life_areas_by_id = life_areas_by_id
+            self._life_areas_by_name = life_areas_by_name
+            self.tasks_by_id = tasks_by_id
+            self.time_scale = time_scale
+            self.max_catchup_ticks = max_catchup_ticks
+            self._last_tick_us = last_tick_us
+            self._quantum_notification_id = quantum_notification_id
+            self._tick_notification_id = tick_notification_id
+
+            _log.info(
+                "Restored engine state: %d life areas, %d tasks, tick=%d",
+                len(self.life_areas_by_id),
+                len(self.tasks_by_id),
+                self.scheduler.current_tick,
+            )
+            return True
+
+        except Exception:
+            _log.warning("Failed to load engine state, falling back to JSON", exc_info=True)
+            return False
 
     def _load_persisted_state_unlocked(self) -> None:
         if self._persistence_dir is None:
             return
 
+        # Try full engine restore from pickle first.
+        if self._load_engine_state_unlocked():
+            return
+
+        # Fall back to JSON domain reconstruction.
         life_areas_path = self._persistence_dir / "life_areas.json"
         tasks_path = self._persistence_dir / "tasks.json"
         if not life_areas_path.exists() and not tasks_path.exists():

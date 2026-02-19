@@ -409,6 +409,17 @@ class SchedClutchBucket:
             f"pri={self.scb_priority}, threads={self.scb_thr_count})"
         )
 
+    def __getstate__(self) -> dict:
+        return {slot: getattr(self, slot) for slot in self.__slots__}
+
+    def __setstate__(self, state: dict) -> None:
+        for slot in self.__slots__:
+            setattr(self, slot, state.get(slot))
+        self.scb_thread_runq._pri_fn = lambda t: t.sched_pri
+        self.scb_clutchpri_prioq._key = (
+            lambda t: t.sched_pri if t.sched_pri_promoted else t.base_pri
+        )
+
 
 class SchedClutch:
     """Per thread_group clutch. Top-level container for the hierarchy.

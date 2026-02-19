@@ -828,3 +828,12 @@ class ClutchRoot:
             f"pri={self.scr_priority}, threads={self.scr_thr_count}, "
             f"runnable=[{', '.join(runnable)}])"
         )
+
+    def __getstate__(self) -> dict:
+        return {slot: getattr(self, slot) for slot in self.__slots__}
+
+    def __setstate__(self, state: dict) -> None:
+        for slot in self.__slots__:
+            setattr(self, slot, state.get(slot))
+        self.scr_unbound_root_prioq._deadline_fn = lambda rb: rb.scrb_deadline
+        self.scr_bound_root_prioq._deadline_fn = lambda rb: rb.scrb_deadline
