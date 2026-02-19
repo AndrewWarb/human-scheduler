@@ -659,7 +659,6 @@ textarea.field-control {
   font-weight: 650;
 }
 
-.tasks-create-card,
 .tasks-area-card {
   width: min(100%, 640px);
   justify-self: center;

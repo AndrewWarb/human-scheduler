@@ -14,9 +14,11 @@ interface TaskFormProps {
     active_window_start_local?: string | null;
     active_window_end_local?: string | null;
   }) => Promise<void>;
+  fixedLifeAreaId?: number;
+  compact?: boolean;
 }
 
-export function TaskForm({ settings, lifeAreas, onSubmit }: TaskFormProps) {
+export function TaskForm({ settings, lifeAreas, onSubmit, fixedLifeAreaId, compact }: TaskFormProps) {
   const [error, setError] = useState("");
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -41,7 +43,7 @@ export function TaskForm({ settings, lifeAreas, onSubmit }: TaskFormProps) {
     try {
       await onSubmit({
         title: (data.get("title") as string).trim(),
-        life_area_id: Number(data.get("life_area_id")),
+        life_area_id: fixedLifeAreaId ?? Number(data.get("life_area_id")),
         urgency_tier: urgencyTier,
         active_window_start_local: activeWindowStart || null,
         active_window_end_local: activeWindowEnd || null,
@@ -53,32 +55,35 @@ export function TaskForm({ settings, lifeAreas, onSubmit }: TaskFormProps) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="grid gap-2">
+    <form onSubmit={handleSubmit} className={compact ? "grid gap-1.5" : "grid gap-2"}>
       <label className="field-label">
-        Title
+        {!compact && "Title"}
         <input
           name="title"
           type="text"
           required
+          placeholder={compact ? "New task title…" : undefined}
           className="field-control"
         />
       </label>
+      {!fixedLifeAreaId && (
+        <label className="field-label">
+          Life Area
+          <select
+            name="life_area_id"
+            required
+            className="field-control"
+          >
+            {lifeAreas.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       <label className="field-label">
-        Life Area
-        <select
-          name="life_area_id"
-          required
-          className="field-control"
-        >
-          {lifeAreas.map((a) => (
-            <option key={a.id} value={a.id}>
-              {a.name}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className="field-label">
-        Urgency
+        {!compact && "Urgency"}
         <select
           name="urgency_tier"
           required
@@ -98,25 +103,27 @@ export function TaskForm({ settings, lifeAreas, onSubmit }: TaskFormProps) {
       </label>
       <div className="grid grid-cols-2 gap-2 max-[620px]:grid-cols-1">
         <label className="field-label">
-          Active Start (optional)
+          {!compact && "Active Start (optional)"}
           <input
             name="active_window_start_local"
             type="time"
+            placeholder={compact ? "Start" : undefined}
             className="field-control"
           />
         </label>
         <label className="field-label">
-          Active End (optional)
+          {!compact && "Active End (optional)"}
           <input
             name="active_window_end_local"
             type="time"
+            placeholder={compact ? "End" : undefined}
             className="field-control"
           />
         </label>
       </div>
       <button
         type="submit"
-        className="btn btn-primary"
+        className={compact ? "btn btn-primary btn-sm" : "btn btn-primary"}
       >
         Create Task
       </button>

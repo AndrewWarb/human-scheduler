@@ -189,18 +189,7 @@ export function TasksView() {
 
   return (
     <div className="animate-[fade-in_0.25s_ease]">
-      <div className="grid grid-cols-1 gap-3.5">
-        <Card className="tasks-create-card">
-          <p className="section-eyebrow">Create Task</p>
-          <TaskForm
-            settings={state.settings}
-            lifeAreas={state.lifeAreas}
-            onSubmit={doCreateTask}
-          />
-        </Card>
-      </div>
-
-      <div className="grid grid-cols-2 max-[1080px]:grid-cols-1 gap-3.5 mt-3.5 items-start">
+      <div className="grid grid-cols-2 max-[1080px]:grid-cols-1 gap-3.5 items-start">
         {state.lifeAreas.length === 0 ? (
           <Card className="tasks-area-card">
             <p className="section-eyebrow">Tasks</p>
@@ -238,6 +227,17 @@ export function TasksView() {
                       />
                     ))
                   )}
+                </div>
+
+                <div className="border-t border-surface-border pt-2.5 mt-1">
+                  <p className="section-eyebrow mb-1.5">Add Task</p>
+                  <TaskForm
+                    settings={state.settings}
+                    lifeAreas={state.lifeAreas}
+                    onSubmit={doCreateTask}
+                    fixedLifeAreaId={area.id}
+                    compact
+                  />
                 </div>
               </Card>
             );
