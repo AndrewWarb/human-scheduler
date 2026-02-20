@@ -91,12 +91,19 @@ export interface SchedulerThread {
   urgency_tier: string;
   urgency_label: string;
   state: string;
+  sched_bucket: string;
   base_pri: number;
   sched_pri: number;
   cpu_usage: number;
+  cpu_usage_hours: number;
   total_cpu_us: number;
   context_switches: number;
+  quantum_base_us: number;
+  quantum_remaining_us: number;
+  quantum_base_hours: number;
+  quantum_remaining_hours: number;
   is_active: boolean;
+  run_queue_rank: number | null;
 }
 
 export interface SchedulerLifeArea {
@@ -106,11 +113,45 @@ export interface SchedulerLifeArea {
   interactivity_scores: Record<string, number>;
 }
 
+export interface SchedulerWarpBudget {
+  bucket: string;
+  remaining_us: number;
+  total_us: number;
+  remaining_hours: number;
+  total_hours: number;
+  is_active: boolean;
+}
+
+export interface SchedulerEdfDeadline {
+  bucket: string;
+  deadline_us: number;
+  deadline_remaining_us: number;
+  deadline_remaining_hours: number;
+  deadline_at: string | null;
+  is_active: boolean;
+}
+
 export interface SchedulerState {
   now_us: number;
+  now_hours: number;
   tick: number;
   active_task_id: number | null;
   quantum_remaining_us: number;
+  quantum_total_us: number;
+  quantum_remaining_hours: number;
+  quantum_total_hours: number;
+  warp_budget_bucket: string | null;
+  warp_budget_remaining_us: number;
+  warp_budget_total_us: number;
+  warp_budget_remaining_hours: number;
+  warp_budget_total_hours: number;
+  warp_budgets: SchedulerWarpBudget[];
+  edf_deadline_bucket: string | null;
+  edf_deadline_us: number;
+  edf_deadline_remaining_us: number;
+  edf_deadline_remaining_hours: number;
+  edf_deadline_at: string | null;
+  edf_deadlines: SchedulerEdfDeadline[];
   threads: SchedulerThread[];
   life_areas: SchedulerLifeArea[];
   recent_trace: string[];

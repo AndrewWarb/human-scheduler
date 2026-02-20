@@ -20,6 +20,7 @@ function TaskItem({
   isActive,
   onAction,
   onUpdateWindow,
+  onRename,
 }: {
   task: Task;
   isActive: boolean;
@@ -31,6 +32,7 @@ function TaskItem({
       active_window_end_local?: string | null;
     },
   ) => Promise<void>;
+  onRename: (task: Task) => void;
 }) {
   const [windowStart, setWindowStart] = useState(task.active_window_start_local ?? "");
   const [windowEnd, setWindowEnd] = useState(task.active_window_end_local ?? "");
@@ -83,7 +85,17 @@ function TaskItem({
   return (
     <article className={`surface-item task-item-compact ${isActive ? "surface-item-active" : ""}`}>
       <div className="flex items-start justify-between gap-2">
-        <h3 className="text-[1rem]">{task.title}</h3>
+        <div className="flex items-center gap-1">
+          <h3 className="text-[1rem]">{task.title}</h3>
+          <button
+            type="button"
+            className="icon-btn"
+            aria-label={`Rename task ${task.title}`}
+            onClick={() => onRename(task)}
+          >
+            ✎
+          </button>
+        </div>
         <button
           type="button"
           className="icon-btn icon-btn-danger"
@@ -227,7 +239,18 @@ function InlineAddTask({
 }
 
 export function TasksView() {
-  const { state, doTaskAction, doCreateTask, doUpdateTaskWindow } = useApp();
+  const { state, doTaskAction, doCreateTask, doUpdateTaskWindow, doRenameTask, showToast } = useApp();
+
+  async function handleRenameTask(task: Task) {
+    const raw = window.prompt("Edit task name:", task.title);
+    if (raw == null) return;
+    const nextTitle = raw.trim();
+    if (!nextTitle || nextTitle === task.title) {
+      if (!nextTitle) showToast("Task name is required.");
+      return;
+    }
+    await doRenameTask(task.id, nextTitle);
+  }
 
   const tasksByLifeArea = new Map<number, Task[]>();
   for (const area of state.lifeAreas) {
@@ -281,6 +304,7 @@ export function TasksView() {
                         isActive={state.dispatch?.task.id === task.id}
                         onAction={doTaskAction}
                         onUpdateWindow={doUpdateTaskWindow}
+                        onRename={handleRenameTask}
                       />
                     ))
                   )}
@@ -314,6 +338,7 @@ export function TasksView() {
                   isActive={state.dispatch?.task.id === task.id}
                   onAction={doTaskAction}
                   onUpdateWindow={doUpdateTaskWindow}
+                  onRename={handleRenameTask}
                 />
               ))}
             </div>

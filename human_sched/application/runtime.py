@@ -479,6 +479,18 @@ class HumanTaskScheduler:
             self._persist_state_unlocked()
             return task
 
+    def rename_task(self, task_id: int, *, title: str) -> Task:
+        """Rename an existing task."""
+        with self._lock:
+            task = self._require_task(task_id)
+            new_title = title.strip()
+            if not new_title:
+                raise ValueError("Task title is required")
+            task.title = new_title
+            task.thread.name = self._thread_name_from_title(new_title)
+            self._persist_state_unlocked()
+            return task
+
     def _apply_urgency_params(
         self,
         thread: Thread,

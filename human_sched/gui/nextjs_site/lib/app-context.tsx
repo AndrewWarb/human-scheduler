@@ -36,6 +36,7 @@ import {
   createLifeArea as apiCreateLifeArea,
   deleteLifeArea as apiDeleteLifeArea,
   renameLifeArea as apiRenameLifeArea,
+  renameTask as apiRenameTask,
 } from "./api";
 import { useEventStream, type ConnectionStatus } from "./use-event-stream";
 
@@ -153,6 +154,7 @@ interface AppContextValue {
   }) => Promise<void>;
   doDeleteLifeArea: (lifeAreaId: number) => Promise<void>;
   doRenameLifeArea: (lifeAreaId: number, name: string) => Promise<void>;
+  doRenameTask: (taskId: number, title: string) => Promise<void>;
   selectTask: (id: number | null) => void;
   showToast: (msg: string) => void;
 }
@@ -409,6 +411,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [showToast, refreshAll],
   );
 
+  const doRenameTask = useCallback(
+    async (taskId: number, title: string) => {
+      try {
+        await apiRenameTask(taskId, title);
+        showToast("Task renamed.");
+        await refreshAll();
+      } catch (e) {
+        showToast(e instanceof Error ? e.message : String(e));
+      }
+    },
+    [showToast, refreshAll],
+  );
+
   const selectTask = useCallback((id: number | null) => {
     dispatch({ type: "SET_SELECTED_TASK", payload: id });
   }, []);
@@ -466,18 +481,25 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return () => clearTimeout(id);
   }, [state.simulationRunning, state.dispatch?.focus_block_end_at, doWhatNext]);
 
-  // Auto-refresh diagnostics + scheduler state every 5s
+  // Auto-refresh scheduler state every 1s while running, diagnostics every 5s
   useEffect(() => {
+    let diagTick = 0;
     const id = setInterval(() => {
-      fetchDiagnostics()
-        .then((d) => dispatch({ type: "SET_DIAGNOSTICS", payload: d }))
-        .catch(() => {});
+      diagTick += 1;
+      if (diagTick % 5 === 0) {
+        fetchDiagnostics()
+          .then((d) => dispatch({ type: "SET_DIAGNOSTICS", payload: d }))
+          .catch(() => {});
+      }
+      if (!state.simulationRunning) {
+        return;
+      }
       fetchSchedulerState()
         .then((s) => dispatch({ type: "SET_SCHEDULER_STATE", payload: s }))
         .catch(() => {});
-    }, 5000);
+    }, 1000);
     return () => clearInterval(id);
-  }, []);
+  }, [state.simulationRunning]);
 
   // SSE event handler with debounced refresh
   const handleSseEvent = useCallback(
@@ -524,6 +546,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     doCreateLifeArea,
     doDeleteLifeArea,
     doRenameLifeArea,
+    doRenameTask,
     selectTask,
     showToast,
   };

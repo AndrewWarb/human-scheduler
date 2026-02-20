@@ -168,3 +168,10 @@ export async function updateTaskUrgency(
 ): Promise<Task> {
   return apiPost(`/api/tasks/${taskId}/urgency`, body);
 }
+
+export async function renameTask(
+  taskId: number,
+  title: string,
+): Promise<Task> {
+  return apiPost(`/api/tasks/${taskId}/rename`, { title });
+}

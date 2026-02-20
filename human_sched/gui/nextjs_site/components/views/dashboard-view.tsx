@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useApp } from "@/lib/app-context";
 import { Card } from "../card";
 import type { SchedulerThread, SchedulerLifeArea } from "@/lib/types";
@@ -18,16 +19,67 @@ const STATE_LABELS: Record<string, string> = {
   terminated: "Terminated",
 };
 
+const STATE_SORT_ORDER: Record<string, number> = {
+  running: 0,
+  runnable: 1,
+  waiting: 2,
+  terminated: 3,
+};
+
+function formatQuantumUs(us: number): string {
+  const totalSeconds = Math.max(0, Math.round(us));
+  const seconds = totalSeconds % 60;
+  const totalMinutes = Math.floor(totalSeconds / 60);
+  const minutes = totalMinutes % 60;
+  const totalHours = Math.floor(totalMinutes / 60);
+  const hours = totalHours % 24;
+  const days = Math.floor(totalHours / 24);
+
+  if (days > 0) return `${days}d ${hours}h ${minutes}m ${seconds}s`;
+  if (totalHours > 0) return `${totalHours}h ${minutes}m ${seconds}s`;
+  if (totalMinutes > 0) return `${totalMinutes}m ${seconds}s`;
+  return `${seconds}s`;
+}
+
+function StatChip({
+  label,
+  value,
+  className = "",
+}: {
+  label: string;
+  value: string;
+  className?: string;
+}) {
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full border border-white/[0.16] bg-white/[0.04] px-2 py-0.5 text-[0.67rem] text-mono-ink font-mono ${className}`}
+    >
+      <span className="uppercase tracking-[0.08em] text-[0.58rem] text-muted">
+        {label}
+      </span>
+      <span className="max-w-[15rem] truncate">{value}</span>
+    </span>
+  );
+}
+
 function ThreadRow({
   thread,
   onAction,
   onUrgencyChange,
   urgencyOptions,
+  warpBudget,
+  edfDeadline,
+  activeTooltipId,
+  setActiveTooltipId,
 }: {
   thread: SchedulerThread;
   onAction: (taskId: number, action: "pause" | "resume" | "complete") => void;
   onUrgencyChange: (taskId: number, urgencyTier: string) => void;
   urgencyOptions: Array<{ value: string; label: string }>;
+  warpBudget: { remaining_hours: number; total_hours: number } | null;
+  edfDeadline: { deadline_remaining_hours: number; deadline_at: string | null } | null;
+  activeTooltipId: string | null;
+  setActiveTooltipId: (tooltipId: string | null) => void;
 }) {
   const isRunnable = thread.state === "running" || thread.state === "runnable";
   const isBlocked = thread.state === "waiting";
@@ -35,6 +87,8 @@ function ThreadRow({
     urgencyOptions.length > 0
       ? urgencyOptions
       : [{ value: thread.urgency_tier, label: thread.urgency_label }];
+  const quantumTooltipId = `quantum-tooltip-thread-${thread.task_id}`;
+  const quantumTooltipActive = activeTooltipId === quantumTooltipId;
 
   return (
     <div
@@ -56,63 +110,121 @@ function ThreadRow({
         {STATE_LABELS[thread.state] ?? thread.state}
       </span>
 
-      <div className="col-span-2 flex flex-wrap items-center gap-x-4 gap-y-0.5 text-[0.72rem] text-muted font-mono">
-        <span>pri {thread.sched_pri}</span>
-        <span>cpu {thread.cpu_usage}</span>
-        <label className="inline-flex items-center gap-1.5 text-[0.68rem]">
-          <span>{thread.urgency_label}</span>
-          <select
-            className="field-control !py-0 !px-1.5 !h-6 !text-[0.68rem] !rounded-md !min-w-[8.8rem]"
-            value={thread.urgency_tier}
-            onChange={(event) => {
-              const nextTier = event.target.value;
-              if (nextTier !== thread.urgency_tier) {
-                onUrgencyChange(thread.task_id, nextTier);
-              }
-            }}
-            aria-label={`Set urgency for ${thread.title}`}
+      <div className="col-span-2 grid gap-1.5">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <StatChip label="pri" value={String(thread.sched_pri)} />
+          <StatChip
+            label="cpu used"
+            value={formatQuantumUs(thread.cpu_usage_hours * 3600)}
+          />
+          <span
+            className="relative inline-flex items-center gap-1 rounded-full border border-white/[0.16] bg-white/[0.04] px-2 py-0.5 text-[0.67rem] text-mono-ink font-mono cursor-help"
+            tabIndex={0}
+            aria-describedby={quantumTooltipActive ? quantumTooltipId : undefined}
+            onMouseEnter={() => setActiveTooltipId(quantumTooltipId)}
+            onMouseLeave={() => setActiveTooltipId(null)}
+            onFocus={() => setActiveTooltipId(quantumTooltipId)}
+            onBlur={() => setActiveTooltipId(null)}
           >
-            {tierOptions.map((tier) => (
-              <option key={tier.value} value={tier.value}>
-                {tier.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <span>{thread.life_area}</span>
-        <span>ctx {thread.context_switches}</span>
-        {isRunnable && (
-          <>
-            <button
-              className="btn btn-ghost !py-0.5 !px-2 !text-[0.68rem] !rounded-lg"
-              onClick={() => onAction(thread.task_id, "pause")}
+            <span className="uppercase tracking-[0.08em] text-[0.58rem] text-muted">
+              q
+            </span>
+            <span>
+              {formatQuantumUs(thread.quantum_remaining_hours * 3600)} /{" "}
+              {formatQuantumUs(thread.quantum_base_hours * 3600)}
+            </span>
+            {quantumTooltipActive && (
+              <span
+                className="interactivity-chip-tooltip"
+                role="tooltip"
+                id={quantumTooltipId}
+              >
+                <span className="interactivity-chip-tooltip-title">
+                  Quantum A / B
+                </span>
+                <span>A = remaining slice time for this thread.</span>
+                <span>B = full slice budget for this thread&apos;s bucket.</span>
+                <span>At 0, the scheduler re-evaluates.</span>
+              </span>
+            )}
+          </span>
+          <StatChip
+            label="warp"
+            value={
+              warpBudget && warpBudget.total_hours > 0
+                ? `${formatQuantumUs(warpBudget.remaining_hours * 3600)} / ${formatQuantumUs(warpBudget.total_hours * 3600)}`
+                : "--"
+            }
+          />
+          <StatChip
+            label="edf"
+            value={
+              edfDeadline && edfDeadline.deadline_at
+                ? formatQuantumUs(edfDeadline.deadline_remaining_hours * 3600)
+                : "--"
+            }
+          />
+          <StatChip label="bucket" value={thread.sched_bucket} />
+          <StatChip label="ctx" value={String(thread.context_switches)} />
+          <StatChip label="area" value={thread.life_area} />
+        </div>
+
+        <div className="flex flex-wrap items-center gap-1.5">
+          <label className="inline-flex items-center gap-1.5 text-[0.68rem]">
+            <span className="uppercase tracking-[0.08em] text-[0.58rem] text-muted">
+              urgency
+            </span>
+            <select
+              className="field-control !py-0 !px-1.5 !h-6 !text-[0.68rem] !rounded-md !min-w-[8.8rem]"
+              value={thread.urgency_tier}
+              onChange={(event) => {
+                const nextTier = event.target.value;
+                if (nextTier !== thread.urgency_tier) {
+                  onUrgencyChange(thread.task_id, nextTier);
+                }
+              }}
+              aria-label={`Set urgency for ${thread.title}`}
             >
-              Block
-            </button>
-            <button
-              className="btn btn-ghost !py-0.5 !px-2 !text-[0.68rem] !rounded-lg"
-              onClick={() => onAction(thread.task_id, "complete")}
-            >
-              Terminate
-            </button>
-          </>
-        )}
-        {isBlocked && (
-          <>
-            <button
-              className="btn btn-ghost !py-0.5 !px-2 !text-[0.68rem] !rounded-lg"
-              onClick={() => onAction(thread.task_id, "resume")}
-            >
-              Unblock
-            </button>
-            <button
-              className="btn btn-ghost !py-0.5 !px-2 !text-[0.68rem] !rounded-lg"
-              onClick={() => onAction(thread.task_id, "complete")}
-            >
-              Terminate
-            </button>
-          </>
-        )}
+              {tierOptions.map((tier) => (
+                <option key={tier.value} value={tier.value}>
+                  {tier.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          {isRunnable && (
+            <>
+              <button
+                className="btn btn-ghost !py-0.5 !px-2 !text-[0.68rem] !rounded-lg"
+                onClick={() => onAction(thread.task_id, "pause")}
+              >
+                Block
+              </button>
+              <button
+                className="btn btn-ghost !py-0.5 !px-2 !text-[0.68rem] !rounded-lg"
+                onClick={() => onAction(thread.task_id, "complete")}
+              >
+                Terminate
+              </button>
+            </>
+          )}
+          {isBlocked && (
+            <>
+              <button
+                className="btn btn-ghost !py-0.5 !px-2 !text-[0.68rem] !rounded-lg"
+                onClick={() => onAction(thread.task_id, "resume")}
+              >
+                Unblock
+              </button>
+              <button
+                className="btn btn-ghost !py-0.5 !px-2 !text-[0.68rem] !rounded-lg"
+                onClick={() => onAction(thread.task_id, "complete")}
+              >
+                Terminate
+              </button>
+            </>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -164,8 +276,17 @@ function InteractivityBar({
 
 export function DashboardView() {
   const { state, doTaskAction, doChangeTaskUrgency } = useApp();
+  const [activeTooltipId, setActiveTooltipId] = useState<string | null>(null);
   const ss = state.schedulerState;
   const urgencyOptions = state.settings?.urgency_tiers ?? [];
+  const topQuantumLabelTooltipId = "quantum-tooltip-kpi-label";
+  const topQuantumLabelTooltipActive = activeTooltipId === topQuantumLabelTooltipId;
+  const topQuantumValueTooltipId = "quantum-tooltip-kpi-value";
+  const topQuantumValueTooltipActive = activeTooltipId === topQuantumValueTooltipId;
+  const topWarpTooltipId = "warp-tooltip-kpi";
+  const topWarpTooltipActive = activeTooltipId === topWarpTooltipId;
+  const topEdfTooltipId = "edf-tooltip-kpi";
+  const topEdfTooltipActive = activeTooltipId === topEdfTooltipId;
 
   if (!ss) {
     return (
@@ -181,18 +302,36 @@ export function DashboardView() {
 
   const activeThreads = ss.threads.filter((t) => t.state !== "terminated");
   const sortedThreads = [...activeThreads].sort((a, b) => {
+    const aRank = a.run_queue_rank ?? Number.MAX_SAFE_INTEGER;
+    const bRank = b.run_queue_rank ?? Number.MAX_SAFE_INTEGER;
+    if (aRank !== bRank) return aRank - bRank;
+
+    const aStateOrder = STATE_SORT_ORDER[a.state] ?? Number.MAX_SAFE_INTEGER;
+    const bStateOrder = STATE_SORT_ORDER[b.state] ?? Number.MAX_SAFE_INTEGER;
+    if (aStateOrder !== bStateOrder) return aStateOrder - bStateOrder;
+
     if (a.is_active && !b.is_active) return -1;
     if (!a.is_active && b.is_active) return 1;
-    return b.sched_pri - a.sched_pri;
+    if (a.sched_pri !== b.sched_pri) return b.sched_pri - a.sched_pri;
+    return a.task_id - b.task_id;
   });
+  const warpByBucket = new Map(
+    (ss.warp_budgets ?? []).map((budget) => [budget.bucket, budget]),
+  );
+  const edfByBucket = new Map(
+    (ss.edf_deadlines ?? []).map((deadline) => [deadline.bucket, deadline]),
+  );
 
   return (
     <div className="animate-[fade-in_0.25s_ease] grid gap-3.5">
       {/* Top row: tick + quantum */}
-      <div className="grid grid-cols-3 gap-3.5 max-[640px]:grid-cols-1">
+      <div className="grid grid-cols-5 gap-3.5 max-[640px]:grid-cols-1">
         <Card>
-          <p className="section-eyebrow">Scheduler Tick</p>
-          <p className="font-mono text-[1.4rem] tracking-wider">{ss.tick}</p>
+          <p className="section-eyebrow">Scheduler Time</p>
+          <p className="font-mono text-[1.4rem] tracking-wider">
+            {formatQuantumUs(ss.now_hours * 3600)}
+          </p>
+          <p className="text-[0.68rem] text-muted font-mono">tick {ss.tick.toLocaleString()}</p>
         </Card>
         <Card>
           <p className="section-eyebrow">Threads</p>
@@ -202,11 +341,118 @@ export function DashboardView() {
           </p>
         </Card>
         <Card>
-          <p className="section-eyebrow">Quantum Remaining</p>
-          <p className="font-mono text-[1.4rem] tracking-wider">
-            {ss.quantum_remaining_us > 0
-              ? `${(ss.quantum_remaining_us / 1_000_000).toFixed(1)}s`
+          <p
+            className="section-eyebrow relative inline-block cursor-help"
+            tabIndex={0}
+            aria-describedby={topQuantumLabelTooltipActive ? topQuantumLabelTooltipId : undefined}
+            onMouseEnter={() => setActiveTooltipId(topQuantumLabelTooltipId)}
+            onMouseLeave={() =>
+              setActiveTooltipId((current) => (current === topQuantumLabelTooltipId ? null : current))
+            }
+            onFocus={() => setActiveTooltipId(topQuantumLabelTooltipId)}
+            onBlur={() =>
+              setActiveTooltipId((current) => (current === topQuantumLabelTooltipId ? null : current))
+            }
+          >
+            Quantum
+            {topQuantumLabelTooltipActive && (
+              <span className="interactivity-chip-tooltip" role="tooltip" id={topQuantumLabelTooltipId}>
+                <span className="interactivity-chip-tooltip-title">Quantum A / B</span>
+                <span>A = remaining slice time for the running task.</span>
+                <span>B = full slice budget for that task's bucket.</span>
+                <span>At 0, the scheduler re-evaluates.</span>
+              </span>
+            )}
+          </p>
+          <p
+            className="font-mono text-[1.4rem] tracking-wider relative inline-block cursor-help"
+            tabIndex={0}
+            aria-describedby={topQuantumValueTooltipActive ? topQuantumValueTooltipId : undefined}
+            onMouseEnter={() => setActiveTooltipId(topQuantumValueTooltipId)}
+            onMouseLeave={() =>
+              setActiveTooltipId((current) => (current === topQuantumValueTooltipId ? null : current))
+            }
+            onFocus={() => setActiveTooltipId(topQuantumValueTooltipId)}
+            onBlur={() =>
+              setActiveTooltipId((current) => (current === topQuantumValueTooltipId ? null : current))
+            }
+          >
+            {ss.quantum_total_hours > 0
+              ? `${formatQuantumUs(ss.quantum_remaining_hours * 3600)} / ${formatQuantumUs(ss.quantum_total_hours * 3600)}`
               : "--"}
+            {topQuantumValueTooltipActive && (
+              <span className="interactivity-chip-tooltip" role="tooltip" id={topQuantumValueTooltipId}>
+                <span className="interactivity-chip-tooltip-title">Quantum A / B</span>
+                <span>A = remaining slice time for the running task.</span>
+                <span>B = full slice budget for that task's bucket.</span>
+                <span>At 0, the scheduler re-evaluates.</span>
+              </span>
+            )}
+          </p>
+        </Card>
+        <Card>
+          <p
+            className="section-eyebrow relative inline-block cursor-help"
+            tabIndex={0}
+            aria-describedby={topWarpTooltipActive ? topWarpTooltipId : undefined}
+            onMouseEnter={() => setActiveTooltipId(topWarpTooltipId)}
+            onMouseLeave={() =>
+              setActiveTooltipId((current) => (current === topWarpTooltipId ? null : current))
+            }
+            onFocus={() => setActiveTooltipId(topWarpTooltipId)}
+            onBlur={() =>
+              setActiveTooltipId((current) => (current === topWarpTooltipId ? null : current))
+            }
+          >
+            Warp Budget
+            {topWarpTooltipActive && (
+              <span className="interactivity-chip-tooltip" role="tooltip" id={topWarpTooltipId}>
+                <span className="interactivity-chip-tooltip-title">Warp A / B</span>
+                <span>A = remaining warp budget for the active root bucket.</span>
+                <span>B = full warp budget for that bucket.</span>
+                <span>Warp lets higher buckets jump ahead temporarily.</span>
+              </span>
+            )}
+          </p>
+          <p className="font-mono text-[1.4rem] tracking-wider">
+            {ss.warp_budget_total_hours > 0
+              ? `${formatQuantumUs(ss.warp_budget_remaining_hours * 3600)} / ${formatQuantumUs(ss.warp_budget_total_hours * 3600)}`
+              : "--"}
+          </p>
+          <p className="text-[0.68rem] text-muted font-mono">
+            {ss.warp_budget_bucket != null ? `bucket ${ss.warp_budget_bucket}` : "--"}
+          </p>
+        </Card>
+        <Card>
+          <p
+            className="section-eyebrow relative inline-block cursor-help"
+            tabIndex={0}
+            aria-describedby={topEdfTooltipActive ? topEdfTooltipId : undefined}
+            onMouseEnter={() => setActiveTooltipId(topEdfTooltipId)}
+            onMouseLeave={() =>
+              setActiveTooltipId((current) => (current === topEdfTooltipId ? null : current))
+            }
+            onFocus={() => setActiveTooltipId(topEdfTooltipId)}
+            onBlur={() =>
+              setActiveTooltipId((current) => (current === topEdfTooltipId ? null : current))
+            }
+          >
+            EDF Deadline
+            {topEdfTooltipActive && (
+              <span className="interactivity-chip-tooltip" role="tooltip" id={topEdfTooltipId}>
+                <span className="interactivity-chip-tooltip-title">EDF deadline</span>
+                <span>Earliest-deadline target for the active root bucket.</span>
+                <span>Shown as time remaining until that deadline.</span>
+              </span>
+            )}
+          </p>
+          <p className="font-mono text-[1.4rem] tracking-wider">
+            {ss.edf_deadline_at
+              ? formatQuantumUs(ss.edf_deadline_remaining_hours * 3600)
+              : "--"}
+          </p>
+          <p className="text-[0.68rem] text-muted font-mono">
+            {ss.edf_deadline_bucket != null ? `bucket ${ss.edf_deadline_bucket}` : "--"}
           </p>
         </Card>
       </div>
@@ -223,6 +469,10 @@ export function DashboardView() {
                 onAction={doTaskAction}
                 onUrgencyChange={doChangeTaskUrgency}
                 urgencyOptions={urgencyOptions}
+                warpBudget={warpByBucket.get(t.sched_bucket) ?? null}
+                edfDeadline={edfByBucket.get(t.sched_bucket) ?? null}
+                activeTooltipId={activeTooltipId}
+                setActiveTooltipId={setActiveTooltipId}
               />
             ))
           ) : (
@@ -247,7 +497,7 @@ export function DashboardView() {
       {ss.recent_trace.length > 0 && (
         <Card>
           <p className="section-eyebrow">Recent Scheduler Trace</p>
-          <div className="font-mono text-[0.72rem] text-mono-ink leading-relaxed max-h-48 overflow-y-auto">
+          <div className="font-mono text-[0.72rem] text-mono-ink leading-relaxed max-h-[36rem] overflow-y-auto">
             {ss.recent_trace.map((line, i) => (
               <div key={i} className="py-0.5 border-b border-white/[0.04] last:border-0">
                 {line}

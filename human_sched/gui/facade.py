@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import copy
+import re
 from datetime import datetime, timezone
 from threading import RLock
 from typing import Any, Callable, TypeVar
@@ -13,7 +15,8 @@ from human_sched.domain.urgency import UrgencyTier
 from human_sched.gui.contract import CONTRACT_VERSION, GuiAdapterMetadata
 from human_sched.gui.events import EventHub, SchedulerEvent
 from human_sched.gui.scenarios import available_seed_scenarios
-from xnu_sched.thread import ThreadState
+from xnu_sched.constants import BUCKET_NAMES, ROOT_BUCKET_WARP_US, THREAD_QUANTUM_US, is_above_timeshare
+from xnu_sched.thread import Thread, ThreadState
 
 
 T = TypeVar("T")
@@ -162,6 +165,17 @@ class SchedulerGuiFacade:
             return self._serialize_task(task)
 
         return self._run_command(_change_urgency)
+
+    def rename_task(self, *, task_id: int, title: str) -> dict[str, Any]:
+        def _rename() -> dict[str, Any]:
+            task = self._scheduler.rename_task(task_id, title=title)
+            self.publish_info(
+                f"Task renamed to '{task.title}'.",
+                related_task_id=task.task_id,
+            )
+            return self._serialize_task(task)
+
+        return self._run_command(_rename)
 
     def pause_task(self, *, task_id: int) -> dict[str, Any]:
         def _pause() -> dict[str, Any]:
@@ -382,53 +396,157 @@ class SchedulerGuiFacade:
         """Live snapshot of scheduler internals for the dashboard."""
         with self._lock:
             scheduler = self._scheduler
-            now_us = scheduler.time_scale.now_scheduler_us()
-            processor = scheduler.processor
-            active_thread = processor.active_thread
+            with scheduler._lock:
+                now_us = scheduler._now_us()
+                scheduler._apply_lazy_catchup(now_us)
 
-            # Thread (task) list with scheduler metadata
-            threads: list[dict[str, Any]] = []
-            for task in scheduler.tasks_by_id.values():
-                t = task.thread
-                threads.append({
-                    "task_id": task.task_id,
-                    "title": task.title,
-                    "life_area": task.life_area.name,
-                    "urgency_tier": task.urgency_tier.value,
-                    "urgency_label": task.urgency_tier.label,
-                    "state": t.state.name.lower(),
-                    "base_pri": t.base_pri,
-                    "sched_pri": t.sched_pri,
-                    "cpu_usage": t.cpu_usage,
-                    "total_cpu_us": t.total_cpu_us,
-                    "context_switches": t.context_switches,
-                    "is_active": active_thread is not None and t.tid == active_thread.tid,
-                })
+                processor = scheduler.processor
+                active_thread = processor.active_thread
+                run_queue_rank_by_tid = self._compute_run_queue_rank_by_tid(now_us)
 
-            # Life area interactivity scores
-            life_areas: list[dict[str, Any]] = []
-            for area in scheduler.life_areas_by_id.values():
-                life_areas.append({
-                    "id": area.life_area_id,
-                    "name": area.name,
-                    "task_count": len(area.task_ids),
-                    "interactivity_scores": area.interactivity_scores(),
-                })
+                # Thread (task) list with scheduler metadata
+                threads: list[dict[str, Any]] = []
+                for task in scheduler.tasks_by_id.values():
+                    t = task.thread
+                    quantum_base_us = self._thread_quantum_base_us(t)
+                    quantum_remaining_us = t.quantum_remaining
+                    if active_thread is not None and t.tid == active_thread.tid and processor.quantum_end > 0:
+                        quantum_remaining_us = max(0, processor.quantum_end - now_us)
+                    quantum_base_hours = scheduler.time_scale.us_to_hours(quantum_base_us)
+                    quantum_remaining_hours = scheduler.time_scale.us_to_hours(quantum_remaining_us)
 
-            # Scheduler-wide state
-            quantum_end_us = processor.quantum_end
-            remaining_us = max(0, quantum_end_us - now_us) if quantum_end_us > 0 else 0
+                    threads.append({
+                        "task_id": task.task_id,
+                        "title": task.title,
+                        "life_area": task.life_area.name,
+                        "urgency_tier": task.urgency_tier.value,
+                        "urgency_label": task.urgency_tier.label,
+                        "state": t.state.name.lower(),
+                        "sched_bucket": BUCKET_NAMES.get(t.th_sched_bucket, str(t.th_sched_bucket)),
+                        "base_pri": t.base_pri,
+                        "sched_pri": t.sched_pri,
+                        "cpu_usage": t.cpu_usage,
+                        "cpu_usage_hours": scheduler.time_scale.us_to_hours(t.cpu_usage),
+                        "total_cpu_us": t.total_cpu_us,
+                        "context_switches": t.context_switches,
+                        "quantum_base_us": quantum_base_us,
+                        "quantum_remaining_us": quantum_remaining_us,
+                        "quantum_base_hours": quantum_base_hours,
+                        "quantum_remaining_hours": quantum_remaining_hours,
+                        "is_active": active_thread is not None and t.tid == active_thread.tid,
+                        "run_queue_rank": run_queue_rank_by_tid.get(t.tid),
+                    })
 
-            return {
-                "now_us": now_us,
-                "tick": scheduler.scheduler.current_tick,
-                "active_task_id": active_thread.tid if active_thread else None,
-                "quantum_remaining_us": remaining_us,
-                "threads": threads,
-                "life_areas": life_areas,
-                "recent_trace": scheduler.scheduler.trace_log[-10:],
-                "recent_switches": scheduler.scheduler.processor_switch_log[-5:],
-            }
+                # Life area interactivity scores
+                life_areas: list[dict[str, Any]] = []
+                for area in scheduler.life_areas_by_id.values():
+                    life_areas.append({
+                        "id": area.life_area_id,
+                        "name": area.name,
+                        "task_count": len(area.task_ids),
+                        "interactivity_scores": area.interactivity_scores(),
+                    })
+
+                # Scheduler-wide state
+                quantum_end_us = processor.quantum_end
+                remaining_us = max(0, quantum_end_us - now_us) if quantum_end_us > 0 else 0
+                total_us = self._thread_quantum_base_us(active_thread) if active_thread is not None else 0
+                remaining_hours = scheduler.time_scale.us_to_hours(remaining_us)
+                total_hours = scheduler.time_scale.us_to_hours(total_us)
+
+                warp_bucket_label: str | None = None
+                warp_remaining_us = 0
+                warp_total_us = 0
+                active_bucket: int | None = None
+                if active_thread is not None:
+                    active_bucket = int(active_thread.th_sched_bucket)
+                    warp_bucket_label = BUCKET_NAMES.get(active_bucket, str(active_bucket))
+                    if 0 <= active_bucket < len(ROOT_BUCKET_WARP_US) and not is_above_timeshare(active_bucket):
+                        root_bucket = scheduler.scheduler.clutch_root.scr_unbound_buckets[active_bucket]
+                        warp_remaining_us = max(0, int(root_bucket.scrb_warp_remaining))
+                        warp_total_us = max(0, int(ROOT_BUCKET_WARP_US[active_bucket]))
+
+                warp_remaining_hours = scheduler.time_scale.us_to_hours(warp_remaining_us)
+                warp_total_hours = scheduler.time_scale.us_to_hours(warp_total_us)
+
+                warp_budgets: list[dict[str, Any]] = []
+                edf_deadlines: list[dict[str, Any]] = []
+                for bucket in range(len(scheduler.scheduler.clutch_root.scr_unbound_buckets)):
+                    root_bucket = scheduler.scheduler.clutch_root.scr_unbound_buckets[bucket]
+                    is_timeshare_bucket = not is_above_timeshare(bucket)
+                    if is_timeshare_bucket:
+                        bucket_total_us = (
+                            max(0, int(ROOT_BUCKET_WARP_US[bucket]))
+                            if 0 <= bucket < len(ROOT_BUCKET_WARP_US)
+                            else 0
+                        )
+                        bucket_remaining_us = min(
+                            bucket_total_us,
+                            max(0, int(root_bucket.scrb_warp_remaining)),
+                        )
+                        warp_budgets.append({
+                            "bucket": BUCKET_NAMES.get(bucket, str(bucket)),
+                            "remaining_us": bucket_remaining_us,
+                            "total_us": bucket_total_us,
+                            "remaining_hours": scheduler.time_scale.us_to_hours(bucket_remaining_us),
+                            "total_hours": scheduler.time_scale.us_to_hours(bucket_total_us),
+                            "is_active": active_bucket == bucket,
+                        })
+
+                    deadline_us = int(root_bucket.scrb_deadline) if is_timeshare_bucket else 0
+                    deadline_remaining_us = max(0, deadline_us - now_us) if deadline_us > 0 else 0
+                    deadline_at = (
+                        self._iso(scheduler.time_scale.scheduler_us_to_wall(deadline_us))
+                        if deadline_us > 0
+                        else None
+                    )
+                    edf_deadlines.append({
+                        "bucket": BUCKET_NAMES.get(bucket, str(bucket)),
+                        "deadline_us": deadline_us,
+                        "deadline_remaining_us": deadline_remaining_us,
+                        "deadline_remaining_hours": scheduler.time_scale.us_to_hours(deadline_remaining_us),
+                        "deadline_at": deadline_at,
+                        "is_active": active_bucket == bucket,
+                    })
+
+                active_edf = next(
+                    (entry for entry in edf_deadlines if entry["is_active"]),
+                    None,
+                )
+
+                return {
+                    "now_us": now_us,
+                    "now_hours": scheduler.time_scale.us_to_hours(now_us),
+                    "tick": scheduler.scheduler.current_tick,
+                    "active_task_id": active_thread.tid if active_thread else None,
+                    "quantum_remaining_us": remaining_us,
+                    "quantum_total_us": total_us,
+                    "quantum_remaining_hours": remaining_hours,
+                    "quantum_total_hours": total_hours,
+                    "warp_budget_bucket": warp_bucket_label,
+                    "warp_budget_remaining_us": warp_remaining_us,
+                    "warp_budget_total_us": warp_total_us,
+                    "warp_budget_remaining_hours": warp_remaining_hours,
+                    "warp_budget_total_hours": warp_total_hours,
+                    "warp_budgets": warp_budgets,
+                    "edf_deadline_bucket": active_edf["bucket"] if active_edf is not None else None,
+                    "edf_deadline_us": active_edf["deadline_us"] if active_edf is not None else 0,
+                    "edf_deadline_remaining_us": (
+                        active_edf["deadline_remaining_us"] if active_edf is not None else 0
+                    ),
+                    "edf_deadline_remaining_hours": (
+                        active_edf["deadline_remaining_hours"] if active_edf is not None else 0.0
+                    ),
+                    "edf_deadline_at": active_edf["deadline_at"] if active_edf is not None else None,
+                    "edf_deadlines": edf_deadlines,
+                    "threads": threads,
+                    "life_areas": life_areas,
+                    "recent_trace": self._enrich_trace(
+                        scheduler.scheduler.trace_log[-30:],
+                        scheduler.time_scale,
+                    )[::-1],
+                    "recent_switches": scheduler.scheduler.processor_switch_log[-5:],
+                }
 
     def metadata(self, *, adapter_metadata: GuiAdapterMetadata, base_url: str) -> dict[str, Any]:
         return {
@@ -537,6 +655,27 @@ class SchedulerGuiFacade:
             "source": event.source,
         }
 
+
+    _TRACE_TS_RE = re.compile(r"^\[\s*(\d+)us\]")
+
+    @staticmethod
+    def _enrich_trace(
+        entries: list[str],
+        time_scale: "TimeScaleAdapter",
+    ) -> list[str]:
+        """Prepend wall-clock time to each trace entry."""
+        enriched: list[str] = []
+        for entry in entries:
+            m = SchedulerGuiFacade._TRACE_TS_RE.match(entry)
+            if m:
+                us = int(m.group(1))
+                wall = time_scale.scheduler_us_to_wall(us)
+                clock = wall.strftime("%H:%M")
+                enriched.append(f"[{clock}] {entry}")
+            else:
+                enriched.append(entry)
+        return enriched
+
     @staticmethod
     def _iso(value: datetime | None) -> str | None:
         if value is None:
@@ -556,3 +695,58 @@ class SchedulerGuiFacade:
         hour = (minute_of_day // 60) % 24
         minute = minute_of_day % 60
         return f"{hour:02d}:{minute:02d}"
+
+    @staticmethod
+    def _thread_quantum_base_us(thread: Thread) -> int:
+        if thread.is_realtime and thread.rt_computation > 0:
+            return thread.rt_computation
+        bucket = int(thread.th_sched_bucket)
+        if 0 <= bucket < len(THREAD_QUANTUM_US):
+            return THREAD_QUANTUM_US[bucket]
+        return 0
+
+    def _compute_run_queue_rank_by_tid(self, timestamp: int) -> dict[int, int]:
+        """Compute scheduler-accurate run ordering using a cloned scheduler state.
+
+        Rank 0 is the currently running thread (if any), followed by repeated
+        calls to ``thread_select`` on the clone to mirror selection precedence.
+        """
+        runtime = self._scheduler
+        try:
+            scheduler_clone = copy.deepcopy(runtime.scheduler)
+        except Exception:
+            return {}
+
+        if not scheduler_clone.pset.processors:
+            return {}
+
+        processor_id = runtime.processor.processor_id
+        clone_processors = scheduler_clone.pset.processors
+        if 0 <= processor_id < len(clone_processors):
+            proc = clone_processors[processor_id]
+        else:
+            proc = clone_processors[0]
+
+        ranks: dict[int, int] = {}
+        seen: set[int] = set()
+        next_rank = 0
+
+        active = proc.active_thread
+        if active is not None and active.state == ThreadState.RUNNING:
+            ranks[active.tid] = next_rank
+            seen.add(active.tid)
+            next_rank += 1
+
+        max_picks = len(scheduler_clone.all_threads) + 1
+        for _ in range(max_picks):
+            selected, _ = scheduler_clone.thread_select(proc, timestamp)
+            if selected is None:
+                break
+            tid = selected.tid
+            if tid in seen:
+                continue
+            ranks[tid] = next_rank
+            seen.add(tid)
+            next_rank += 1
+
+        return ranks

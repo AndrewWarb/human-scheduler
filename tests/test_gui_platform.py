@@ -82,6 +82,99 @@ class GuiPlatformTests(unittest.TestCase):
         self.assertEqual(payload["scheduler_base_url"], "http://127.0.0.1:8765")
         self.assertEqual(payload["event_stream_status"], "idle")
 
+    def test_scheduler_state_includes_quantum_metadata(self) -> None:
+        area = self.facade.create_life_area(name="Work")
+        created = self.facade.create_task(
+            life_area_id=int(area["id"]),
+            title="Prepare notes",
+            urgency_tier="normal",
+        )
+        self.assertIsNotNone(self.facade.what_next())
+
+        state = self.facade.scheduler_state()
+        self.assertIn("quantum_remaining_us", state)
+        self.assertIn("now_hours", state)
+        self.assertIn("quantum_total_us", state)
+        self.assertIn("quantum_remaining_hours", state)
+        self.assertIn("quantum_total_hours", state)
+        self.assertIn("warp_budget_bucket", state)
+        self.assertIn("warp_budget_remaining_us", state)
+        self.assertIn("warp_budget_total_us", state)
+        self.assertIn("warp_budget_remaining_hours", state)
+        self.assertIn("warp_budget_total_hours", state)
+        self.assertIn("warp_budgets", state)
+        self.assertIn("edf_deadline_bucket", state)
+        self.assertIn("edf_deadline_us", state)
+        self.assertIn("edf_deadline_remaining_us", state)
+        self.assertIn("edf_deadline_remaining_hours", state)
+        self.assertIn("edf_deadline_at", state)
+        self.assertIn("edf_deadlines", state)
+        self.assertGreater(state["quantum_total_us"], 0)
+        self.assertGreater(state["quantum_total_hours"], 0.0)
+        self.assertIsNotNone(state["warp_budget_bucket"])
+        self.assertGreater(state["warp_budget_total_us"], 0)
+        self.assertGreater(state["warp_budget_total_hours"], 0.0)
+        self.assertGreater(len(state["warp_budgets"]), 0)
+        self.assertIn("bucket", state["warp_budgets"][0])
+        self.assertIn("remaining_us", state["warp_budgets"][0])
+        self.assertIn("total_us", state["warp_budgets"][0])
+        self.assertGreater(len(state["edf_deadlines"]), 0)
+        self.assertIn("bucket", state["edf_deadlines"][0])
+        self.assertIn("deadline_us", state["edf_deadlines"][0])
+        self.assertIn("deadline_remaining_us", state["edf_deadlines"][0])
+
+        thread_rows = state["threads"]
+        row = next((t for t in thread_rows if t["task_id"] == int(created["id"])), None)
+        self.assertIsNotNone(row)
+        assert row is not None
+        self.assertIn("sched_bucket", row)
+        self.assertIn("quantum_base_us", row)
+        self.assertIn("quantum_remaining_us", row)
+        self.assertIn("quantum_base_hours", row)
+        self.assertIn("quantum_remaining_hours", row)
+        self.assertIn("cpu_usage_hours", row)
+        self.assertIn("run_queue_rank", row)
+        self.assertIsInstance(row["cpu_usage_hours"], (int, float))
+        self.assertGreater(row["quantum_base_us"], 0)
+        self.assertGreater(row["quantum_base_hours"], 0.0)
+
+    def test_scheduler_state_reports_run_queue_ranks_for_runnable_threads(self) -> None:
+        area = self.facade.create_life_area(name="Work")
+        self.facade.create_task(
+            life_area_id=int(area["id"]),
+            title="Task A",
+            urgency_tier="important",
+        )
+        self.facade.create_task(
+            life_area_id=int(area["id"]),
+            title="Task B",
+            urgency_tier="important",
+        )
+        self.facade.create_task(
+            life_area_id=int(area["id"]),
+            title="Task C",
+            urgency_tier="important",
+        )
+        self.assertIsNotNone(self.facade.what_next())
+
+        state = self.facade.scheduler_state()
+        runnable = [
+            row
+            for row in state["threads"]
+            if row["state"] in {"running", "runnable"}
+        ]
+        self.assertGreaterEqual(len(runnable), 1)
+
+        for row in runnable:
+            self.assertIsInstance(row["run_queue_rank"], int)
+
+        ranks = sorted(int(row["run_queue_rank"]) for row in runnable)
+        self.assertEqual(ranks, list(range(len(runnable))))
+
+        active_row = next((row for row in runnable if row["is_active"]), None)
+        if active_row is not None:
+            self.assertEqual(active_row["run_queue_rank"], 0)
+
     def test_facade_can_delete_life_area(self) -> None:
         area = self.facade.create_life_area(name="Errands")
         self.facade.create_task(
