@@ -2,6 +2,8 @@
 
 A personal task scheduler that adapts the macOS/XNU Clutch scheduler to decide **what you should work on next**. Instead of a static to-do list, it applies real OS scheduling algorithms (timeshare decay, EDF deadlines, warp budgets, starvation avoidance) to balance urgency, fairness, and focus across competing life areas.
 
+<img width="1177" height="925" alt="image" src="https://github.com/user-attachments/assets/40e8d57c-d3ff-4599-b658-59a5950ba1ba" />
+
 ## How It Works
 
 The XNU Clutch scheduler solves the problem of fairly distributing CPU time across competing workloads. Human task management is the same problem at a different timescale: you have limited attention (the "CPU") and many tasks competing across work, health, household, hobbies, etc.
