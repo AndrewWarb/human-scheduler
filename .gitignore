@@ -29,6 +29,7 @@ uv.lock
 
 # Project-specific
 references/
+.gui_data/
 
 # Next.js frontend
 human_sched/gui/nextjs_site/node_modules/
