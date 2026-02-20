@@ -422,7 +422,7 @@ class HumanSchedulerTests(unittest.TestCase):
             finally:
                 scheduler.close()
 
-    def test_lazy_catchup_auto_pauses_after_missed_quantum(self) -> None:
+    def test_lazy_catchup_re_evaluates_after_missed_quantum(self) -> None:
         area = self.scheduler.create_life_area("Health")
         task = self.scheduler.create_task(
             life_area=area,
@@ -438,11 +438,11 @@ class HumanSchedulerTests(unittest.TestCase):
         self.clock.advance_hours(2.0)
         result = self.scheduler.what_next()
 
-        self.assertIsNone(result)
-        self.assertEqual(task.thread.state, ThreadState.WAITING)
+        self.assertIsNotNone(result)
+        self.assertEqual(task.thread.state, ThreadState.RUNNING)
         self.assertTrue(
-            any("auto-paused" in msg for msg, _ in self.notifier.immediate),
-            "Expected missed-quantum auto-pause notification",
+            any("Keep going on" in msg for msg, _ in self.notifier.immediate),
+            "Expected missed-quantum keep-running notification",
         )
 
     def test_time_scale_config_loading(self) -> None:

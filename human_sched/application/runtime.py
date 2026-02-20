@@ -655,20 +655,42 @@ class HumanTaskScheduler:
         if now_us <= self.processor.quantum_end:
             return
 
-        # Missed focus-block expiration: user likely walked away.
-        old_task = self.tasks_by_id.get(active.tid)
-        new_thread = self.scheduler.thread_block(active, self.processor, now_us)
+        # Missed focus-block expiration: catch up using quantum-expiry semantics
+        # instead of force-blocking the active thread.
+        old_thread = active
+        new_thread = self.scheduler.thread_quantum_expire(self.processor, now_us)
 
-        if old_task is not None:
-            self.notifier.notify_immediately(
-                f"'{old_task.title}' was auto-paused after a missed focus-block end.",
-                NotificationEventType.QUANTUM_EXPIRE,
-            )
-
-        if new_thread is not None:
+        if self.processor.active_thread is not None:
             self._arm_quantum_for_active(now_us)
         else:
             self._cancel_quantum_artifacts(reset_quantum_end=True)
+
+        if new_thread is None:
+            self.notifier.notify_immediately(
+                "No runnable tasks remain after focus-block re-evaluation.",
+                NotificationEventType.QUANTUM_EXPIRE,
+            )
+            self._persist_state_unlocked()
+            return
+
+        new_task = self.tasks_by_id.get(new_thread.tid)
+        old_task = self.tasks_by_id.get(old_thread.tid)
+
+        if new_thread is old_thread:
+            label = new_task.title if new_task is not None else old_thread.name
+            self.notifier.notify_immediately(
+                f"Keep going on '{label}' — still the best use of your time.",
+                NotificationEventType.QUANTUM_EXPIRE,
+            )
+            self._persist_state_unlocked()
+            return
+
+        old_label = old_task.title if old_task is not None else old_thread.name
+        new_label = new_task.title if new_task is not None else new_thread.name
+        self.notifier.notify_immediately(
+            f"Switch to '{new_label}' — focus block ended for '{old_label}'.",
+            NotificationEventType.QUANTUM_EXPIRE,
+        )
         self._persist_state_unlocked()
 
     def _apply_tick_catchup(self, now_us: int) -> None:

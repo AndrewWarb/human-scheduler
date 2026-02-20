@@ -83,6 +83,30 @@ const INITIAL_STATE: AppState = {
 };
 
 const MAX_EVENTS = 200;
+const SIMULATION_RUNNING_STORAGE_KEY = "human-scheduler.simulation-running";
+
+function readPersistedSimulationRunning(): boolean | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(SIMULATION_RUNNING_STORAGE_KEY);
+    if (raw == null) return null;
+    return raw === "1";
+  } catch {
+    return null;
+  }
+}
+
+function persistSimulationRunning(value: boolean): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(
+      SIMULATION_RUNNING_STORAGE_KEY,
+      value ? "1" : "0",
+    );
+  } catch {
+    // localStorage can fail in hardened browser/privacy modes.
+  }
+}
 
 function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
@@ -178,6 +202,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setTimeout(() => dispatch({ type: "SHOW_TOAST", payload: "" }), 2200);
   }, []);
 
+  const setSimulationRunning = useCallback((running: boolean) => {
+    dispatch({ type: "SET_SIMULATION_RUNNING", payload: running });
+    persistSimulationRunning(running);
+  }, []);
+
   const refreshAll = useCallback(async () => {
     const [meta, settings, areas, tasksRes, dispatchRes, eventsRes, diag, schedState] =
       await Promise.all([
@@ -198,11 +227,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       dispatch({ type: "SET_TASKS", payload: tasksRes.items ?? [] });
     if (dispatchRes)
       dispatch({ type: "SET_DISPATCH", payload: dispatchRes.dispatch });
+    const persistedRunning = readPersistedSimulationRunning();
+    if (persistedRunning !== null) {
+      setSimulationRunning(persistedRunning);
+    } else if (dispatchRes) {
+      // Fallback for first load before any local preference exists.
+      setSimulationRunning(dispatchRes.dispatch !== null);
+    }
     if (eventsRes)
       dispatch({ type: "SET_EVENTS", payload: eventsRes.items ?? [] });
     if (diag) dispatch({ type: "SET_DIAGNOSTICS", payload: diag });
     if (schedState) dispatch({ type: "SET_SCHEDULER_STATE", payload: schedState });
-  }, []);
+  }, [setSimulationRunning]);
 
   const refreshTasks = useCallback(
     async (filters?: {
@@ -246,27 +282,27 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       showToast("Simulation is already running.");
       return;
     }
-    dispatch({ type: "SET_SIMULATION_RUNNING", payload: true });
+    setSimulationRunning(true);
     if (state.dispatch !== null) {
       showToast("Simulation resumed.");
       return;
     }
     await doWhatNext();
-  }, [state.simulationRunning, state.dispatch, doWhatNext, showToast]);
+  }, [state.simulationRunning, state.dispatch, doWhatNext, showToast, setSimulationRunning]);
 
   const stopSimulation = useCallback(() => {
     if (!state.simulationRunning) {
       showToast("Simulation is already stopped.");
       return;
     }
-    dispatch({ type: "SET_SIMULATION_RUNNING", payload: false });
+    setSimulationRunning(false);
     showToast("Simulation stopped. Automatic recommendations paused.");
-  }, [state.simulationRunning, showToast]);
+  }, [state.simulationRunning, showToast, setSimulationRunning]);
 
   const resetSimulation = useCallback(async () => {
     try {
       const result = await apiResetSimulation();
-      dispatch({ type: "SET_SIMULATION_RUNNING", payload: false });
+      setSimulationRunning(false);
       dispatch({ type: "SET_DISPATCH", payload: null });
       dispatch({ type: "SET_SELECTED_TASK", payload: null });
       await refreshAll();
@@ -277,7 +313,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     } catch (e) {
       showToast(e instanceof Error ? e.message : String(e));
     }
-  }, [refreshAll, showToast]);
+  }, [refreshAll, showToast, setSimulationRunning]);
 
   const doTaskAction = useCallback(
     async (taskId: number, action: "pause" | "resume" | "complete" | "delete") => {
@@ -481,7 +517,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return () => clearTimeout(id);
   }, [state.simulationRunning, state.dispatch?.focus_block_end_at, doWhatNext]);
 
-  // Auto-refresh scheduler state every 1s while running, diagnostics every 5s
+  // Auto-refresh dispatch + scheduler state every 1s while active, diagnostics every 5s
   useEffect(() => {
     let diagTick = 0;
     const id = setInterval(() => {
@@ -491,15 +527,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           .then((d) => dispatch({ type: "SET_DIAGNOSTICS", payload: d }))
           .catch(() => {});
       }
-      if (!state.simulationRunning) {
+      const shouldRefreshScheduler = state.simulationRunning || state.dispatch !== null;
+      if (!shouldRefreshScheduler) {
         return;
       }
+      fetchDispatch()
+        .then((res) => dispatch({ type: "SET_DISPATCH", payload: res.dispatch }))
+        .catch(() => {});
       fetchSchedulerState()
         .then((s) => dispatch({ type: "SET_SCHEDULER_STATE", payload: s }))
         .catch(() => {});
     }, 1000);
     return () => clearInterval(id);
-  }, [state.simulationRunning]);
+  }, [state.simulationRunning, state.dispatch]);
 
   // SSE event handler with debounced refresh
   const handleSseEvent = useCallback(

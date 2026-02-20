@@ -321,26 +321,31 @@ export function DashboardView() {
   const edfByBucket = new Map(
     (ss.edf_deadlines ?? []).map((deadline) => [deadline.bucket, deadline]),
   );
+  const kpiCardClass = "h-40 min-w-0 flex flex-col justify-between";
+  const kpiValueClass =
+    "font-mono text-[clamp(1rem,1.4vw,1.4rem)] leading-tight tracking-wider break-words";
 
   return (
     <div className="animate-[fade-in_0.25s_ease] grid gap-3.5">
       {/* Top row: tick + quantum */}
       <div className="grid grid-cols-5 gap-3.5 max-[640px]:grid-cols-1">
-        <Card>
+        <Card className={kpiCardClass}>
           <p className="section-eyebrow">Scheduler Time</p>
-          <p className="font-mono text-[1.4rem] tracking-wider">
+          <p className={kpiValueClass}>
             {formatQuantumUs(ss.now_hours * 3600)}
           </p>
-          <p className="text-[0.68rem] text-muted font-mono">tick {ss.tick.toLocaleString()}</p>
+          <p className="text-[0.68rem] text-muted font-mono leading-tight break-words">
+            tick {ss.tick.toLocaleString()}
+          </p>
         </Card>
-        <Card>
+        <Card className={kpiCardClass}>
           <p className="section-eyebrow">Threads</p>
-          <p className="font-mono text-[1.4rem] tracking-wider">
+          <p className={kpiValueClass}>
             {activeThreads.length}
             <span className="text-[0.76rem] text-muted ml-1">active</span>
           </p>
         </Card>
-        <Card>
+        <Card className={kpiCardClass}>
           <p
             className="section-eyebrow relative inline-block cursor-help"
             tabIndex={0}
@@ -365,7 +370,7 @@ export function DashboardView() {
             )}
           </p>
           <p
-            className="font-mono text-[1.4rem] tracking-wider relative inline-block cursor-help"
+            className={`${kpiValueClass} relative block cursor-help`}
             tabIndex={0}
             aria-describedby={topQuantumValueTooltipActive ? topQuantumValueTooltipId : undefined}
             onMouseEnter={() => setActiveTooltipId(topQuantumValueTooltipId)}
@@ -390,7 +395,7 @@ export function DashboardView() {
             )}
           </p>
         </Card>
-        <Card>
+        <Card className={kpiCardClass}>
           <p
             className="section-eyebrow relative inline-block cursor-help"
             tabIndex={0}
@@ -414,16 +419,16 @@ export function DashboardView() {
               </span>
             )}
           </p>
-          <p className="font-mono text-[1.4rem] tracking-wider">
+          <p className={kpiValueClass}>
             {ss.warp_budget_total_hours > 0
               ? `${formatQuantumUs(ss.warp_budget_remaining_hours * 3600)} / ${formatQuantumUs(ss.warp_budget_total_hours * 3600)}`
               : "--"}
           </p>
-          <p className="text-[0.68rem] text-muted font-mono">
+          <p className="text-[0.68rem] text-muted font-mono leading-tight break-words">
             {ss.warp_budget_bucket != null ? `bucket ${ss.warp_budget_bucket}` : "--"}
           </p>
         </Card>
-        <Card>
+        <Card className={kpiCardClass}>
           <p
             className="section-eyebrow relative inline-block cursor-help"
             tabIndex={0}
@@ -446,12 +451,12 @@ export function DashboardView() {
               </span>
             )}
           </p>
-          <p className="font-mono text-[1.4rem] tracking-wider">
+          <p className={kpiValueClass}>
             {ss.edf_deadline_at
               ? formatQuantumUs(ss.edf_deadline_remaining_hours * 3600)
               : "--"}
           </p>
-          <p className="text-[0.68rem] text-muted font-mono">
+          <p className="text-[0.68rem] text-muted font-mono leading-tight break-words">
             {ss.edf_deadline_bucket != null ? `bucket ${ss.edf_deadline_bucket}` : "--"}
           </p>
         </Card>
